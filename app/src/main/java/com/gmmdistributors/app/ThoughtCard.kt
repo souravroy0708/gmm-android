@@ -45,7 +45,7 @@ object ThoughtCard {
 
         val display = font(context, R.font.anek_extrabold, Typeface.DEFAULT_BOLD)
         val body = font(context, R.font.mukta_medium, Typeface.DEFAULT)
-        val bengali = font(context, R.font.noto_bengali_bold, display)
+        val bengali = font(context, R.font.mukta_bold, display)
 
         // 1. Gradient background
         c.drawRect(0f, 0f, w.toFloat(), h.toFloat(), Paint().apply {

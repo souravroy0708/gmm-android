@@ -49,15 +49,12 @@ val AccentGreen: Color get() = if (ThemeState.dark) MintLite else Leaf
 val Display = FontFamily(
     Font(R.font.anek_bold, FontWeight.Bold),
     Font(R.font.anek_extrabold, FontWeight.ExtraBold),
-    Font(R.font.noto_bengali_bold, FontWeight.Bold),
 )
 
 val Body = FontFamily(
     Font(R.font.mukta_regular, FontWeight.Normal),
     Font(R.font.mukta_medium, FontWeight.Medium),
     Font(R.font.mukta_bold, FontWeight.Bold),
-    Font(R.font.noto_bengali_regular, FontWeight.Normal),
-    Font(R.font.noto_bengali_bold, FontWeight.Bold),
 )
 
 private val AppTypography = Typography(
