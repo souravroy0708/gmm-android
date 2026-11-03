@@ -99,7 +99,7 @@ class Repo(context: Context) {
         if (signedIn) return refreshMe(lang)
         val r = api.post("auth/device/", JSONObject().put("device", deviceName()).put("app_version", appVersion()).put("language", lang))
         if (r.ok && r.json != null) storeSession(r.json)?.let { return Res.Ok(it) }
-        return fail(r, lang, "Could not connect to GMM.")
+        return fail(r, lang, if (lang == "bn") "GMM সার্ভারে সংযোগ হচ্ছে না।" else "Could not reach the GMM server.")
     }
 
     suspend fun cachedMe(): Me? = withContext(Dispatchers.IO) {

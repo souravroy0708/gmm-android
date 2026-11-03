@@ -14,7 +14,10 @@ data class ApiReply(val code: Int?, val json: JSONObject?) {
     val ok: Boolean get() = code != null && code in 200..299
     val offline: Boolean get() = code == null
     val authExpired: Boolean get() = code == 401 && json?.optString("code") == "auth"
-    val error: String? get() = json?.optString("error")?.takeIf { it.isNotBlank() }
+    /** Server's own message; or, when the reply is not GMM JSON (old server, proxy page, crash), say so with the HTTP code. */
+    val error: String?
+        get() = json?.optString("error")?.takeIf { it.isNotBlank() }
+            ?: if (code != null && code !in 200..299) "GMM server problem (error $code). Please try again later or call us." else null
 }
 
 /**

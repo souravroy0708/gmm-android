@@ -51,6 +51,8 @@ class AppController(private val ctx: Context, private val scope: CoroutineScope)
     var guestAddress by mutableStateOf<Address?>(null)
     var authOpen by mutableStateOf(false)
     var authRegister by mutableStateOf(false)
+    /** Sign-in / sign-up error shown inside the form (a toast would hide behind the keyboard). */
+    var authError by mutableStateOf<String?>(null)
     private var afterAuth: (() -> Unit)? = null
 
     // Catalogue (live from /api/v1/catalog/)
@@ -188,6 +190,7 @@ class AppController(private val ctx: Context, private val scope: CoroutineScope)
         if (signedIn) { then?.invoke(); return }
         afterAuth = then
         authRegister = register
+        authError = null
         authOpen = true
     }
 
@@ -205,13 +208,21 @@ class AppController(private val ctx: Context, private val scope: CoroutineScope)
 
     fun login(phone: String, password: String) = launch {
         busy = true
-        handle(repo.login(phone, password, language)) { afterSignIn(it) }
+        authError = null
+        when (val r = repo.login(phone, password, language)) {
+            is Res.Ok -> afterSignIn(r.value)
+            is Res.Fail -> authError = r.message
+        }
         busy = false
     }
 
     fun register(name: String, phone: String, password: String) = launch {
         busy = true
-        handle(repo.register(name, phone, password, language)) { afterSignIn(it) }
+        authError = null
+        when (val r = repo.register(name, phone, password, language)) {
+            is Res.Ok -> afterSignIn(r.value)
+            is Res.Fail -> authError = r.message
+        }
         busy = false
     }
 

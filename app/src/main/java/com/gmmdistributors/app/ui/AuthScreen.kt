@@ -5,6 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -63,6 +64,8 @@ fun AuthScreen(app: AppController, onBack: () -> Unit) {
     var password2 by remember { mutableStateOf("") }
     var showPw by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    val keyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
+    val shownError = error ?: app.authError
 
     fun submit() {
         val digits = phone.filter { it.isDigit() }.takeLast(10)
@@ -74,6 +77,8 @@ fun AuthScreen(app: AppController, onBack: () -> Unit) {
             else -> null
         }
         if (error != null) return
+        keyboard?.hide()  // so the result is visible
+        app.authError = null
         if (register) app.register(name.trim(), digits, password) else app.login(digits, password)
     }
 
@@ -128,13 +133,13 @@ fun AuthScreen(app: AppController, onBack: () -> Unit) {
                 AppField(
                     label = if (bn) "আপনার পুরো নাম" else "Full name",
                     value = name,
-                    onChange = { name = it.take(80); error = null },
+                    onChange = { name = it.take(80); error = null; app.authError = null },
                 )
             }
             AppField(
                 label = if (bn) "মোবাইল নম্বর (১০ সংখ্যা)" else "Mobile number (10 digits)",
                 value = phone,
-                onChange = { phone = it.filter { c -> c.isDigit() || c == '+' || c == ' ' }.take(15); error = null },
+                onChange = { phone = it.filter { c -> c.isDigit() || c == '+' || c == ' ' }.take(15); error = null; app.authError = null },
                 keyboard = KeyboardType.Phone,
                 placeholder = "98765 43210",
             )
@@ -155,7 +160,11 @@ fun AuthScreen(app: AppController, onBack: () -> Unit) {
                     onChange = { password2 = it.take(128); error = null },
                 )
             }
-            error?.let { Text(it, color = Danger, style = MaterialTheme.typography.bodyMedium) }
+            shownError?.let {
+                Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(DangerBg).padding(12.dp)) {
+                    Text(it, color = Danger, style = MaterialTheme.typography.bodyMedium)
+                }
+            }
 
             BigButton(
                 text = when {
