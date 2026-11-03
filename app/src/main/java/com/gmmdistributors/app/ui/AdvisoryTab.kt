@@ -53,7 +53,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.gmmdistributors.app.AppController
-import com.gmmdistributors.app.DummyCatalog
+import com.gmmdistributors.app.AdvisoryContent
 import com.gmmdistributors.app.Tab
 import com.gmmdistributors.app.ThoughtCard
 import java.time.LocalDate
@@ -65,8 +65,8 @@ private val MONTHS_EN = listOf("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", 
 fun AdvisoryTab(app: AppController, actions: PhoneActions) {
     val lang = app.language
     val currentMonth = remember { LocalDate.now().monthValue }
-    val tipIndex = remember { LocalDate.now().dayOfYear % DummyCatalog.DAILY_ORGANIC_TIPS_EN.size }
-    val dailyTip = if (lang == "bn") DummyCatalog.DAILY_ORGANIC_TIPS_BN[tipIndex] else DummyCatalog.DAILY_ORGANIC_TIPS_EN[tipIndex]
+    val tipIndex = remember { LocalDate.now().dayOfYear % AdvisoryContent.DAILY_ORGANIC_TIPS_EN.size }
+    val dailyTip = if (lang == "bn") AdvisoryContent.DAILY_ORGANIC_TIPS_BN[tipIndex] else AdvisoryContent.DAILY_ORGANIC_TIPS_EN[tipIndex]
 
     Column(
         Modifier
@@ -159,7 +159,7 @@ fun AdvisoryTab(app: AppController, actions: PhoneActions) {
             style = MaterialTheme.typography.headlineMedium,
         )
 
-        DummyCatalog.CROP_GUIDES.forEach { guide ->
+        AdvisoryContent.CROP_GUIDES.forEach { guide ->
             Row(
                 Modifier
                     .fillMaxWidth()
@@ -237,7 +237,7 @@ fun AdvisoryTab(app: AppController, actions: PhoneActions) {
                         }
                     }
                 }
-                DummyCatalog.CROP_GUIDES.forEach { g ->
+                AdvisoryContent.CROP_GUIDES.forEach { g ->
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
                             text = if (lang == "bn") g.nameBn else g.nameEn.substringBefore(" "),
@@ -275,7 +275,7 @@ fun AdvisoryTab(app: AppController, actions: PhoneActions) {
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun CropDetailScreen(
-    guide: DummyCatalog.CropGuide,
+    guide: AdvisoryContent.CropGuide,
     app: AppController,
     actions: PhoneActions,
     onBack: () -> Unit,
@@ -430,9 +430,8 @@ fun CropDetailScreen(
                         .padding(10.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    DrawableImage(
-                        drawableName = prod.drawableName,
-                        contentDescription = prod.name,
+                    ProductImage(
+                        product = prod,
                         modifier = Modifier.size(52.dp).clip(RoundedCornerShape(10.dp)),
                     )
                     Spacer(Modifier.width(10.dp))

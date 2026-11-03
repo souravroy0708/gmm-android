@@ -48,6 +48,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -62,297 +64,156 @@ import com.gmmdistributors.app.Tab
 import com.gmmdistributors.app.api.Product
 import kotlin.math.ceil
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+/**
+ * Home / shop. Designed for a first-time rural buyer on a small phone:
+ * greeting + search, three picture categories, "order again", a 2-column product grid with one
+ * big button per product, and a call/WhatsApp help card. No marketing walls of text.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ShopTab(app: AppController, actions: PhoneActions) {
     val lang = app.language
-    val filteredProducts = remember(app.products, app.selectedCategorySlug, app.searchQuery) {
+    val bn = lang == "bn"
+    val filter = app.selectedCategorySlug
+    val query = app.searchQuery.trim().lowercase()
+    val shown = remember(app.products, filter, query) {
         app.products.filter { p ->
-            val catMatch = when (app.selectedCategorySlug) {
-                "all" -> true
-                "fertilizer" -> p.kind == "fertilizer"
-                "pesticide" -> p.kind == "pesticide"
-                else -> p.categorySlug == app.selectedCategorySlug
-            }
-            val q = app.searchQuery.trim().lowercase()
-            val searchMatch = q.isBlank() ||
-                p.name.lowercase().contains(q) ||
-                p.nameBn.lowercase().contains(q) ||
-                p.shortDescription.lowercase().contains(q) ||
-                p.composition.lowercase().contains(q)
-            catMatch && searchMatch
+            val catOk = filter == "all" || p.kind == filter || p.categorySlug == filter
+            val qOk = query.isBlank() || listOf(p.name, p.nameBn, p.shortDescription, p.shortDescriptionBn, p.composition)
+                .any { it.lowercase().contains(query) }
+            catOk && qOk
         }
     }
+    val kinds = remember(app.products) { app.products.map { it.kind }.toSet() }
+    val reorder = app.reorderCandidate
+    val firstName = app.me?.name?.substringBefore(' ').orEmpty()
 
     PullToRefreshBox(
         isRefreshing = app.refreshing,
         onRefresh = { app.refresh() },
         modifier = Modifier.fillMaxSize().background(Paper),
     ) {
-        Column(
-            Modifier
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState()),
-        ) {
-            // 1. Sunrise & Hills Hero Banner (from gmm/templates/shop/products.html & premium.css)
+        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+            // Greeting + search
             Column(
                 Modifier
                     .fillMaxWidth()
-                    .background(
-                        Brush.verticalGradient(
-                            listOf(
-                                Color(0xFF0B2417),
-                                Color(0xFF14472C),
-                                Color(0xFF2E7A44),
-                            )
-                        )
-                    )
-                    .padding(horizontal = 18.dp, vertical = 20.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
+                    .background(Brush.verticalGradient(listOf(Forest, Forest2)))
+                    .padding(start = 18.dp, end = 18.dp, top = 16.dp, bottom = 20.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                Row(
-                    Modifier
-                        .clip(RoundedCornerShape(50))
-                        .background(Color.White.copy(alpha = 0.14f))
-                        .border(1.dp, SunGold.copy(alpha = 0.7f), RoundedCornerShape(50))
-                        .padding(horizontal = 12.dp, vertical = 5.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Icon(Icons.Filled.Verified, contentDescription = null, tint = SunGold, modifier = Modifier.size(16.dp))
-                    Spacer(Modifier.width(6.dp))
-                    Text(
-                        text = if (lang == "bn") "১০০% জৈব সার ও জৈব কীটনাশক · রাসায়নিকমুক্ত" else "100% Organic Fertilizer & Bio-Pesticide · No Chemicals",
-                        color = Color.White,
-                        style = MaterialTheme.typography.labelMedium,
-                    )
-                }
-
                 Text(
-                    text = t("Organic farming, a promise of good health"),
-                    color = Color.White,
-                    style = MaterialTheme.typography.headlineLarge,
+                    text = if (bn) "নমস্কার${if (firstName.isNotBlank()) ", $firstName" else ""} 🙏" else "Namaste${if (firstName.isNotBlank()) ", $firstName" else ""} 🙏",
+                    color = Color.White, style = MaterialTheme.typography.headlineMedium,
                 )
                 Text(
-                    text = t("100% Organic Fertilizers & Bio-Pesticides from GMM Distributors, delivered to your door."),
-                    color = MutedOnDark,
-                    style = MaterialTheme.typography.bodyMedium,
+                    text = if (bn) "আজ কী লাগবে? জৈব সার, কীটনাশক ও খাঁটি খাবার, বাড়িতে পৌঁছে দেব।"
+                    else "What do you need today? Organic inputs and pure food, delivered home.",
+                    color = MutedOnDark, style = MaterialTheme.typography.bodyMedium,
                 )
-
-                // Hero Featured Product Pod Preview
-                Row(
-                    Modifier.fillMaxWidth().padding(top = 4.dp),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Box(
-                        Modifier
-                            .weight(1f)
-                            .clip(RoundedCornerShape(14.dp))
-                            .background(SunGold)
-                            .clickable {
-                                val msg = if (lang == "bn") {
-                                    "নমস্কার GMM ডিস্ট্রিবিউটরস, আমি আপনাদের জৈব সার ও জৈব কীটনাশক অর্ডার করতে চাই।"
-                                } else {
-                                    "Namaste GMM Distributors, I want to enquire about your 100% organic fertilizers & bio-pesticides."
-                                }
-                                actions.onSendEnquiryWhatsApp(msg)
-                            }
-                            .padding(vertical = 12.dp, horizontal = 14.dp),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text(
-                            text = if (lang == "bn") "💬 হোয়াটসঅ্যাপে কথা বলুন" else "💬 Chat with Owner on WhatsApp",
-                            color = SunInk,
-                            style = MaterialTheme.typography.labelLarge,
-                        )
-                    }
-                }
-            }
-
-            // 2. Main Body Container
-            Column(
-                Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 14.dp, vertical = 14.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp),
-            ) {
-                // 4 Trust Pillars (2x2 Grid)
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-                    TrustTile(
-                        icon = Icons.Filled.Eco,
-                        title = t("100% Organic"),
-                        sub = t("No synthetic chemicals"),
-                        modifier = Modifier.weight(1f),
-                    )
-                    TrustTile(
-                        icon = Icons.Filled.SupportAgent,
-                        title = t("WhatsApp Order"),
-                        sub = t("Direct to owner"),
-                        modifier = Modifier.weight(1f),
-                    )
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-                    TrustTile(
-                        icon = Icons.Filled.LocalShipping,
-                        title = if (lang == "bn") "₹১০০০+ ফ্রি ডেলিভারি" else "Free Delivery ₹1000+",
-                        sub = t("Manual UPI / Bank") + " / COD",
-                        modifier = Modifier.weight(1f),
-                    )
-                    TrustTile(
-                        icon = Icons.Filled.ReceiptLong,
-                        title = t("GST Invoice"),
-                        sub = t("Proper tax bill"),
-                        modifier = Modifier.weight(1f),
-                    )
-                }
-
-                // Promo Banners for Krishi Paramarsha & GMM Thought Card Maker
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(18.dp))
-                        .background(Brush.horizontalGradient(listOf(Forest, Leaf)))
-                        .clickable {
-                            app.openCropSlug = null
-                            app.thoughtCardOpen = false
-                            app.tab = Tab.Advisory
-                        }
-                        .padding(14.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Box(
-                        Modifier.size(44.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.15f)),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text("🌾", fontSize = 22.sp)
-                    }
-                    Spacer(Modifier.width(12.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text(
-                            text = if (lang == "bn") "কৃষি পরামর্শ — ধান, আলু, পাট, সরিষা ও বেগুন" else "Krishi Paramarsha — Organic Crop Guides",
-                            color = Color.White,
-                            style = MaterialTheme.typography.titleMedium,
-                        )
-                        Text(
-                            text = if (lang == "bn") "মরসুম, জৈব সার ও জৈব কীটনাশক প্রয়োগের সহজ গাইড" else "Seasonal stages, organic fertilizer & bio-pesticide dosage",
-                            color = MutedOnDark,
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                    }
-                    Text("→", color = SunGold, style = MaterialTheme.typography.headlineMedium)
-                }
-
-                // Search Bar
-                OutlinedTextField(
+                Spacer(Modifier.height(6.dp))
+                androidx.compose.material3.TextField(
                     value = app.searchQuery,
-                    onValueChange = { app.searchQuery = it },
-                    placeholder = { Text(t("Search organic fertilizer or bio-pesticide…")) },
-                    leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null, tint = AccentGreen) },
+                    onValueChange = { app.searchQuery = it.take(40) },
+                    placeholder = { Text(if (bn) "খুঁজুন: নিম, সার, চাল…" else "Search: neem, manure, rice…") },
+                    leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null, tint = Muted) },
                     trailingIcon = {
-                        if (app.searchQuery.isNotBlank()) {
-                            Icon(
-                                Icons.Filled.Clear,
-                                contentDescription = "Clear",
-                                modifier = Modifier.clickable { app.searchQuery = "" },
-                            )
+                        if (app.searchQuery.isNotEmpty()) {
+                            Icon(Icons.Filled.Close, contentDescription = "Clear", tint = Muted,
+                                modifier = Modifier.clickable { app.searchQuery = "" })
                         }
                     },
                     singleLine = true,
                     shape = RoundedCornerShape(16.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedContainerColor = CardBg,
-                        unfocusedContainerColor = CardBg,
-                        focusedBorderColor = AccentGreen,
-                        unfocusedBorderColor = PaperLine,
+                    colors = androidx.compose.material3.TextFieldDefaults.colors(
+                        focusedContainerColor = CardBg, unfocusedContainerColor = CardBg,
+                        focusedIndicatorColor = Color.Transparent, unfocusedIndicatorColor = Color.Transparent,
                     ),
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
+                )
+            }
+
+            Column(
+                Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                // Three picture categories (tap again to show everything)
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                    listOf(
+                        Triple("fertilizer", if (bn) "সার" else "Fertilizer", if (bn) "মাটি ও ফলন" else "Soil & yield"),
+                        Triple("pesticide", if (bn) "কীটনাশক" else "Pest care", if (bn) "নিম ও জৈব" else "Neem & bio"),
+                        Triple("food", if (bn) "খাবার" else "Food", if (bn) "চাল, তেল, মধু" else "Rice, oil, honey"),
+                    ).filter { it.first in kinds }.forEach { (kind, title, sub) ->
+                        CategoryTile(
+                            title = title, subtitle = sub, kind = kind, selected = filter == kind,
+                            modifier = Modifier.weight(1f),
+                            onClick = { app.selectedCategorySlug = if (filter == kind) "all" else kind },
+                        )
+                    }
+                }
+
+                if (reorder != null && filter == "all" && query.isBlank()) {
+                    ReorderCard(order = reorder, lang = lang, onReorder = { app.reorder(reorder) })
+                }
+
+                SectionHeader(
+                    title = when (filter) {
+                        "fertilizer", "pesticide", "food" -> kindLabel(filter, lang)
+                        else -> if (bn) "সব পণ্য" else "All products"
+                    } + " (${shown.size})",
+                    action = if (filter != "all" || query.isNotBlank()) (if (bn) "সব দেখুন" else "Show all") else null,
+                    onAction = { app.selectedCategorySlug = "all"; app.searchQuery = "" },
                 )
 
-                // Category Filter Chips
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    FilterChipPill(
-                        label = if (lang == "bn") "সব পণ্য (${app.products.size})" else "All Organic (${app.products.size})",
-                        selected = app.selectedCategorySlug == "all",
-                        onClick = { app.selectedCategorySlug = "all" },
-                    )
-                    FilterChipPill(
-                        label = if (lang == "bn") "🌱 জৈব সার (7)" else "🌱 Organic Fertilizers (7)",
-                        selected = app.selectedCategorySlug == "fertilizer",
-                        onClick = { app.selectedCategorySlug = "fertilizer" },
-                    )
-                    FilterChipPill(
-                        label = if (lang == "bn") "🛡️ জৈব কীটনাশক (3)" else "🛡️ Bio-Pesticides (3)",
-                        selected = app.selectedCategorySlug == "pesticide",
-                        onClick = { app.selectedCategorySlug = "pesticide" },
-                    )
-                    app.categories.forEach { cat ->
-                        FilterChipPill(
-                            label = cat.localizedName(lang),
-                            selected = app.selectedCategorySlug == cat.slug,
-                            onClick = { app.selectedCategorySlug = cat.slug },
+                if (shown.isEmpty()) {
+                    AppCard {
+                        Text(if (bn) "কিছু পাওয়া যায়নি" else "Nothing found", style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            if (bn) "অন্য নামে খুঁজুন, অথবা ফোন করে জিজ্ঞেস করুন।" else "Try another word, or call us and ask.",
+                            style = MaterialTheme.typography.bodyMedium, color = Muted,
                         )
+                    }
+                } else {
+                    shown.chunked(2).forEach { pair ->
+                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+                            pair.forEach { p ->
+                                val v = p.defaultVariant
+                                ProductGridCard(
+                                    product = p,
+                                    lang = lang,
+                                    qtyInCart = v?.let { app.cartQuantities[it.id] } ?: 0,
+                                    modifier = Modifier.weight(1f),
+                                    onOpen = { app.openProductSlug = p.slug },
+                                    onAdd = { v?.let { app.setVariantQty(it.id, 1) } },
+                                    onQty = { q -> v?.let { app.setVariantQty(it.id, q) } },
+                                )
+                            }
+                            if (pair.size == 1) Spacer(Modifier.weight(1f))
+                        }
                     }
                 }
 
-                // Section Title
-                Row(
-                    Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                ) {
-                    Column {
-                        Text(
-                            text = if (lang == "bn") "আমাদের ১০০% জৈব পণ্যসমূহ" else "Our 100% Organic Catalogue",
-                            style = MaterialTheme.typography.headlineMedium,
+                HelpStrip(
+                    lang = lang,
+                    phone = app.siteConfig.supportPhone,
+                    showWhatsApp = app.ownerWhatsapp.isNotBlank(),
+                    onCall = { actions.onCallSupport(app.siteConfig.supportPhone) },
+                    onWhatsApp = {
+                        actions.onSendEnquiryWhatsApp(
+                            if (bn) "নমস্কার GMM, আমি অ্যাপ থেকে অর্ডার করতে চাই।" else "Namaste GMM, I want to order from the app."
                         )
-                        Text(
-                            text = if (lang == "bn") "প্যাকের মাপ বেছে কার্টে যোগ করুন (কোনো রাসায়নিক নেই)"
-                            else "Choose a pack size and add to cart (Strictly Zero Chemicals)",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = Muted,
-                        )
-                    }
-                }
+                    },
+                )
 
-                // Product Cards List
-                filteredProducts.forEach { product ->
-                    OrganicProductCard(
-                        product = product,
-                        lang = lang,
-                        cartQuantities = app.cartQuantities,
-                        onUpdateQty = { variantId, qty -> app.setVariantQty(variantId, qty) },
-                        onOpenDetail = { app.openProductSlug = product.slug },
-                    )
+                // Quiet trust line instead of marketing blocks
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                    listOf(
+                        if (bn) "✓ ১০০% জৈব" else "✓ 100% organic",
+                        if (bn) "✓ GST ইনভয়েস" else "✓ GST invoice",
+                        if (bn) "✓ বাড়িতে ডেলিভারি" else "✓ Home delivery",
+                    ).forEach { Text(it, style = MaterialTheme.typography.labelMedium, color = AccentGreen) }
                 }
-
-                // How Ordering Works (3-step card from GMM)
-                AppCard(title = if (lang == "bn") "কীভাবে অর্ডার ও পেমেন্ট করবেন?" else "How WhatsApp Ordering Works") {
-                    HowItWorksStep(
-                        num = "1",
-                        title = if (lang == "bn") "জৈব সার বা কীটনাশক বেছে নিন" else "Choose Your Organic Packs",
-                        desc = if (lang == "bn") "১০টি খাঁটি জৈব পণ্যের মধ্যে আপনার জমির প্রয়োজন অনুযায়ী প্যাক কার্টে রাখুন।"
-                        else "Select from our 10 fixed 100% organic fertilizers & bio-pesticides.",
-                    )
-                    HowItWorksStep(
-                        num = "2",
-                        title = if (lang == "bn") "অর্ডার করুন ও হোয়াটসঅ্যাপে পাঠান" else "Place Order & Send to Owner on WhatsApp",
-                        desc = if (lang == "bn") "কোনো অনলাইন পেমেন্ট গেটওয়ে নেই — এক ট্যাপে অর্ডারটি সরাসরি মালিকের হোয়াটসঅ্যাপে চলে যাবে।"
-                        else "No online payment gateway needed — one tap sends your full order receipt to our owner on WhatsApp.",
-                    )
-                    HowItWorksStep(
-                        num = "3",
-                        title = if (lang == "bn") "ম্যানুয়াল UPI / ব্যাংক বা ডেলিভারিতে পেমেন্ট" else "Pay Manually via UPI, Bank or Cash on Delivery",
-                        desc = if (lang == "bn") "মালিক অর্ডার নিশ্চিত করার পর ম্যানুয়ালি UPI/ব্যাংক ট্রান্সফার করুন অথবা ডেলিভারির সময় টাকা দিন।"
-                        else "Owner manually collects payment via Bank Account, UPI ID, or Cash on Delivery and dispatches with a GST Invoice.",
-                    )
-                }
-
-                Spacer(Modifier.height(24.dp))
+                Spacer(Modifier.height(80.dp))  // room for the floating cart bar
             }
         }
     }
@@ -414,8 +275,9 @@ private fun OrganicProductCard(
     onUpdateQty: (Int, Int) -> Unit,
     onOpenDetail: () -> Unit,
 ) {
-    var selectedVariantIdx by remember(product.id) { mutableIntStateOf(0) }
+    var selectedVariantIdx by remember(product.id) { mutableIntStateOf(product.variants.indexOfFirst { it.inStock }.coerceAtLeast(0)) }
     val selectedVariant = product.variants.getOrElse(selectedVariantIdx) { product.variants.first() }
+    val maxAllowed = minOf(10, selectedVariant.stock).coerceAtLeast(0)
     val currentCartQty = cartQuantities[selectedVariant.id] ?: 0
     var addStepQty by remember(selectedVariant.id) { mutableIntStateOf(1) }
 
@@ -443,9 +305,8 @@ private fun OrganicProductCard(
                 .padding(16.dp),
             contentAlignment = Alignment.Center,
         ) {
-            DrawableImage(
-                drawableName = product.drawableName,
-                contentDescription = product.localizedName(lang),
+            ProductImage(
+                product = product,
                 contentScale = ContentScale.Fit,
                 modifier = Modifier.height(190.dp).fillMaxWidth(),
             )
@@ -556,9 +417,13 @@ private fun OrganicProductCard(
                     color = Muted,
                 )
                 Text(
-                    text = if (lang == "bn") "স্টকে আছে (${selectedVariant.stock})" else "In Stock (${selectedVariant.stock})",
+                    text = when {
+                        selectedVariant.stock <= 0 -> if (lang == "bn") "স্টকে নেই" else "Out of stock"
+                        selectedVariant.stock < 10 -> if (lang == "bn") "মাত্র ${selectedVariant.stock} টি বাকি" else "Only ${selectedVariant.stock} left"
+                        else -> if (lang == "bn") "স্টকে আছে" else "In stock"
+                    },
                     style = MaterialTheme.typography.labelMedium,
-                    color = AccentGreen,
+                    color = if (selectedVariant.stock <= 0) Danger else AccentGreen,
                 )
             }
 
@@ -580,10 +445,12 @@ private fun OrganicProductCard(
                     }
                     QuantityStepper(
                         qty = currentCartQty,
-                        maxQty = 10,
+                        maxQty = maxOf(maxAllowed, currentCartQty),
                         onChange = { newQ -> onUpdateQty(selectedVariant.id, newQ) },
                     )
                 }
+            } else if (maxAllowed <= 0) {
+                BigButton(text = if (lang == "bn") "স্টকে নেই" else "Out of stock", enabled = false, onClick = {})
             } else {
                 Row(
                     Modifier.fillMaxWidth(),
@@ -592,7 +459,7 @@ private fun OrganicProductCard(
                 ) {
                     QuantityStepper(
                         qty = addStepQty,
-                        maxQty = 10,
+                        maxQty = maxAllowed,
                         onChange = { if (it >= 1) addStepQty = it },
                     )
                     BigButton(
@@ -658,8 +525,9 @@ fun ProductDetailScreen(
     onBack: () -> Unit,
 ) {
     val lang = app.language
-    var selectedVariantIdx by remember(product.id) { mutableIntStateOf(0) }
+    var selectedVariantIdx by remember(product.id) { mutableIntStateOf(product.variants.indexOfFirst { it.inStock }.coerceAtLeast(0)) }
     val selectedVariant = product.variants.getOrElse(selectedVariantIdx) { product.variants.first() }
+    val maxAllowed = minOf(10, selectedVariant.stock).coerceAtLeast(0)
     val currentCartQty = app.cartQuantities[selectedVariant.id] ?: 0
     var selectedCropIdx by remember(product.id) { mutableIntStateOf(0) }
     var areaOrTreesInput by remember(product.id) { mutableStateOf("2") }
@@ -701,20 +569,16 @@ fun ProductDetailScreen(
                 .padding(20.dp),
             contentAlignment = Alignment.Center,
         ) {
-            DrawableImage(
-                drawableName = product.drawableName,
-                contentDescription = product.localizedName(lang),
-                modifier = Modifier.height(230.dp).fillMaxWidth(),
+            ProductArt(
+                product = product,
+                modifier = Modifier.height(230.dp).fillMaxWidth().clip(RoundedCornerShape(18.dp)),
             )
         }
 
         // Title, Badges & Description
         AppCard {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OrganicBadge(
-                    text = if (product.kind == "pesticide") t("Organic Bio-Pesticide") else t("Organic Fertilizer"),
-                    isPesticide = product.kind == "pesticide",
-                )
+                OrganicBadge(text = kindLabel(product.kind, lang), isPesticide = product.kind == "pesticide")
                 OrganicBadge(text = if (lang == "bn") "১০০% রাসায়নিকমুক্ত" else "100% Chemical-Free")
             }
             Text(product.localizedName(lang), style = MaterialTheme.typography.headlineMedium)
@@ -757,7 +621,7 @@ fun ProductDetailScreen(
                     )
                     QuantityStepper(
                         qty = currentCartQty,
-                        maxQty = 10,
+                        maxQty = maxOf(maxAllowed, currentCartQty),
                         onChange = { app.setVariantQty(selectedVariant.id, it) },
                     )
                 }
@@ -771,7 +635,9 @@ fun ProductDetailScreen(
                 )
             } else {
                 BigButton(
-                    text = "🛒 ${t("Add to Cart")} · ${formatRupees(selectedVariant.price)}",
+                    text = if (maxAllowed <= 0) (if (lang == "bn") "স্টকে নেই" else "Out of stock")
+                    else "🛒 ${t("Add to Cart")} · ${formatRupees(selectedVariant.price)}",
+                    enabled = maxAllowed > 0,
                     onClick = { app.setVariantQty(selectedVariant.id, 1) },
                 )
             }

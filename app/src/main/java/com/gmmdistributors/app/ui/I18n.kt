@@ -27,6 +27,7 @@ object Lang {
         "100% Organic Fertilizers & Bio-Pesticides from GMM Distributors, delivered to your door." to
             "জিএমএম ডিস্ট্রিবিউটরস-এর ১০০% জৈব সার ও জৈব কীটনাশক, সরাসরি আপনার দুয়ারে।",
         "No Payment Gateway · Order on WhatsApp" to "কোনো পেমেন্ট গেটওয়ে নেই · হোয়াটসঅ্যাপে অর্ডার করুন",
+        "No Payment Gateway · UPI, Bank or COD" to "কোনো পেমেন্ট গেটওয়ে নেই · UPI, ব্যাংক বা ক্যাশ",
         "All Products" to "সব পণ্য",
         "Fertilizers" to "জৈব সার",
         "Bio-Pesticides" to "জৈব কীটনাশক",

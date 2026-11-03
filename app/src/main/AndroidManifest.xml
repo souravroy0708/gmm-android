@@ -2,6 +2,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Know when the network comes back, to send orders saved offline -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
     <!-- Direct intent queries for WhatsApp & WhatsApp Business order messages, phone calls, and web links -->
     <queries>
@@ -10,15 +12,26 @@
         <intent>
             <action android:name="android.intent.action.DIAL" />
         </intent>
+        <!-- "Send order by SMS" works without mobile data -->
+        <intent>
+            <action android:name="android.intent.action.SENDTO" />
+            <data android:scheme="smsto" />
+        </intent>
         <intent>
             <action android:name="android.intent.action.VIEW" />
             <data android:scheme="https" />
+        </intent>
+        <!-- UPI apps (GPay, PhonePe, Paytm, BHIM) for the "Pay with UPI" button -->
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="upi" />
         </intent>
     </queries>
 
     <application
         android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
         android:label="@string/app_name"
         android:supportsRtl="true"
         android:theme="@style/Theme.GMM"

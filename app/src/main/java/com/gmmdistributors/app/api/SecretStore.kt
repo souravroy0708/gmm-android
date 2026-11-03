@@ -12,7 +12,7 @@ import javax.crypto.spec.GCMParameterSpec
 
 /**
  * Per-device signing secret encrypted via Android Keystore (AES/GCM/NoPadding).
- * Matches Bas1Minute's HMAC-SHA256 request signing security for when the Django backend is connected.
+ * Holds the sign-in token and the HMAC signing secret (same scheme as Bas1Minute).
  */
 class SecretStore(context: Context) {
     private val store = context.getSharedPreferences("gmm_secure", Context.MODE_PRIVATE)
@@ -32,23 +32,35 @@ class SecretStore(context: Context) {
         return gen.generateKey()
     }
 
-    var secret: String
-        get() = try {
-            val stored = store.getString("s", null) ?: return ""
+    private fun read(name: String): String = try {
+        val stored = store.getString(name, null)
+        if (stored == null) "" else {
             val bytes = Base64.decode(stored, Base64.NO_WRAP)
             val cipher = Cipher.getInstance("AES/GCM/NoPadding")
             cipher.init(Cipher.DECRYPT_MODE, key(), GCMParameterSpec(128, bytes.copyOfRange(0, 12)))
             String(cipher.doFinal(bytes.copyOfRange(12, bytes.size)), Charsets.UTF_8)
-        } catch (e: Exception) {
-            ""
         }
-        set(value) {
-            if (value.isBlank()) { store.edit().remove("s").apply(); return }
-            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-            cipher.init(Cipher.ENCRYPT_MODE, key())
-            val out = cipher.iv + cipher.doFinal(value.toByteArray(Charsets.UTF_8))
-            store.edit().putString("s", Base64.encodeToString(out, Base64.NO_WRAP)).apply()
-        }
+    } catch (e: Exception) {
+        ""
+    }
+
+    private fun write(name: String, value: String) {
+        if (value.isBlank()) { store.edit().remove(name).apply(); return }
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(Cipher.ENCRYPT_MODE, key())
+        val out = cipher.iv + cipher.doFinal(value.toByteArray(Charsets.UTF_8))
+        store.edit().putString(name, Base64.encodeToString(out, Base64.NO_WRAP)).apply()
+    }
+
+    /** Bearer token for `Authorization`, issued by /api/v1/auth/login|register. */
+    var token: String
+        get() = read("t")
+        set(value) = write("t", value)
+
+    /** Per-phone HMAC secret; every signed-in request is signed with it. */
+    var secret: String
+        get() = read("s")
+        set(value) = write("s", value)
 
     fun clear() = store.edit().clear().apply()
 }

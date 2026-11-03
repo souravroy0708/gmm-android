@@ -12,13 +12,13 @@ import org.json.JSONObject
  * Built-in Android SQLite database (`gmm_organic.db`) following the exact Bas1Minute LocalDb pattern.
  * Stores:
  * - `cart`: variant_id -> quantity
- * - `addresses`: saved farmer delivery addresses
- * - `orders`: placed orders with full JSON snapshot (items, tax breakdown, address, UTR, status)
- * - `cache`: last good JSON responses from Dummy API / Django server
+ * - `addresses`: legacy table (addresses now live on the server, cached under `cache`)
+ * - `orders`: offline copy of the customer's server orders
+ * - `cache`: last good JSON responses from the Django server (catalogue, addresses, account, invoices)
  * - `outbox`: offline actions waiting to sync when connected to live Django backend
  */
 class LocalDb private constructor(context: Context) :
-    SQLiteOpenHelper(context.applicationContext, "gmm_organic.db", null, 1) {
+    SQLiteOpenHelper(context.applicationContext, "gmm_organic.db", null, 2) {
 
     companion object {
         @Volatile private var instance: LocalDb? = null
@@ -67,6 +67,8 @@ class LocalDb private constructor(context: Context) :
             """.trimIndent()
         )
         db.execSQL("CREATE TABLE IF NOT EXISTS cache (key TEXT PRIMARY KEY, body TEXT NOT NULL, fetched_at INTEGER NOT NULL)")
+        // v2: orders made offline, sent by SyncWorker / on reconnect. key = server idempotency key.
+        db.execSQL("CREATE TABLE IF NOT EXISTS pending_orders (key TEXT PRIMARY KEY, body TEXT NOT NULL, created_at INTEGER NOT NULL)")
         db.execSQL("CREATE TABLE IF NOT EXISTS outbox (id INTEGER PRIMARY KEY AUTOINCREMENT, path TEXT NOT NULL, body TEXT NOT NULL, created_at INTEGER NOT NULL)")
     }
 
@@ -190,12 +192,16 @@ class LocalDb private constructor(context: Context) :
                 put("payment_status", order.paymentStatus)
                 put("utr_reference", order.utrReference)
                 put("whatsapp_sent", if (order.whatsappSent) 1 else 0)
-                put("created_at", System.currentTimeMillis())
+                put("created_at", orderSortKey(order))
                 put("payload_json", json)
             },
             SQLiteDatabase.CONFLICT_REPLACE
         )
     }
+
+    private fun orderSortKey(order: Order): Long =
+        runCatching { java.time.OffsetDateTime.parse(order.createdAtIso).toInstant().toEpochMilli() }
+            .getOrDefault(System.currentTimeMillis())
 
     @Synchronized
     fun orders(): List<Order> {
@@ -214,6 +220,31 @@ class LocalDb private constructor(context: Context) :
             if (c.moveToFirst()) runCatching { Order.from(JSONObject(c.getString(0))) }.getOrNull() else null
         }
 
+    // ---------- Pending (offline) orders ----------
+
+    @Synchronized
+    fun savePending(p: com.gmmdistributors.app.api.PendingOrder) {
+        writableDatabase.insertWithOnConflict(
+            "pending_orders", null,
+            ContentValues().apply { put("key", p.key); put("body", p.toJson().toString()); put("created_at", p.createdAt) },
+            SQLiteDatabase.CONFLICT_REPLACE,
+        )
+    }
+
+    @Synchronized
+    fun pendingOrders(): List<com.gmmdistributors.app.api.PendingOrder> {
+        val list = ArrayList<com.gmmdistributors.app.api.PendingOrder>()
+        readableDatabase.rawQuery("SELECT body FROM pending_orders ORDER BY created_at DESC", null).use { c ->
+            while (c.moveToNext()) runCatching { com.gmmdistributors.app.api.PendingOrder.from(JSONObject(c.getString(0))) }.getOrNull()?.let { list.add(it) }
+        }
+        return list
+    }
+
+    @Synchronized
+    fun deletePending(key: String) {
+        writableDatabase.delete("pending_orders", "key = ?", arrayOf(key))
+    }
+
     // ---------- Cache ----------
 
     @Synchronized
@@ -231,14 +262,41 @@ class LocalDb private constructor(context: Context) :
     }
 
     @Synchronized
+    fun cacheTime(key: String): Long? =
+        readableDatabase.rawQuery("SELECT fetched_at FROM cache WHERE key = ?", arrayOf(key)).use { c ->
+            if (c.moveToFirst()) c.getLong(0) else null
+        }
+
+    @Synchronized
     fun getCache(key: String): String? =
         readableDatabase.rawQuery("SELECT body FROM cache WHERE key = ?", arrayOf(key)).use { c ->
             if (c.moveToFirst()) c.getString(0) else null
         }
 
+    /** Keeps the cached order list in step with the server (orders are never deleted there, but
+     *  another account may have used this phone before). */
+    @Synchronized
+    fun keepOnlyOrders(orderNos: List<String>) {
+        if (orderNos.isEmpty()) {
+            writableDatabase.delete("orders", null, null)
+            return
+        }
+        val marks = orderNos.joinToString(",") { "?" }
+        writableDatabase.delete("orders", "order_no NOT IN ($marks)", orderNos.toTypedArray())
+    }
+
+    /** Sign-out: forget everything tied to the account but keep the public catalogue cache and cart. */
+    @Synchronized
+    fun wipeAccountData() {
+        writableDatabase.delete("orders", null, null)
+        writableDatabase.delete("addresses", null, null)
+        writableDatabase.delete("outbox", null, null)
+        writableDatabase.delete("cache", "key NOT IN (?, ?, ?)", arrayOf("catalog", "catalog_checked", "guest_address"))
+    }
+
     @Synchronized
     fun wipeAll() {
-        for (t in listOf("cart", "addresses", "orders", "cache", "outbox")) {
+        for (t in listOf("cart", "addresses", "orders", "cache", "outbox", "pending_orders")) {
             writableDatabase.delete(t, null, null)
         }
     }

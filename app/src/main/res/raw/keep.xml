@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Product and crop pictures are looked up by name (the name comes from the server's
+     "app image key"), so the release resource shrinker must not remove them. -->
+<resources xmlns:tools="http://schemas.android.com/tools"
+    tools:keep="@drawable/prod_*,@drawable/crop_*,@drawable/gmm_logo" />

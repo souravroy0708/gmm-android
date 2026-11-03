@@ -53,9 +53,8 @@ import com.gmmdistributors.app.R
 @Composable
 fun ProfileTab(app: AppController, actions: PhoneActions) {
     val lang = app.language
+    val bn = lang == "bn"
     var serverUrlInput by rememberSaveable(app.serverUrl) { mutableStateOf(app.serverUrl) }
-    var ownerWaInput by rememberSaveable(app.prefs.ownerWhatsapp) { mutableStateOf(app.prefs.ownerWhatsapp) }
-    var useDummy by rememberSaveable(app.useDummyApi) { mutableStateOf(app.useDummyApi) }
 
     Column(
         Modifier
@@ -96,12 +95,43 @@ fun ProfileTab(app: AppController, actions: PhoneActions) {
                 style = MaterialTheme.typography.bodySmall,
             )
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.padding(top = 4.dp)) {
-                SmallPill("📞 Call ${app.siteConfig.supportPhone}", gold = true) {
-                    actions.onCallSupport(app.siteConfig.supportPhone)
+                if (app.siteConfig.supportPhone.isNotBlank()) {
+                    SmallPill("📞 ${if (bn) "ফোন করুন" else "Call us"}", gold = true) {
+                        actions.onCallSupport(app.siteConfig.supportPhone)
+                    }
                 }
-                SmallPill("💬 WhatsApp Owner", whatsapp = true) {
-                    actions.onSendEnquiryWhatsApp("Namaste GMM Distributors, I am reaching out from the GMM Organic Android App.")
+                if (app.ownerWhatsapp.isNotBlank()) {
+                    SmallPill("💬 WhatsApp", whatsapp = true) {
+                        actions.onSendEnquiryWhatsApp("Namaste GMM Distributors, I am reaching out from the GMM Organic Android App.")
+                    }
                 }
+            }
+        }
+
+        // Account
+        val me = app.me
+        AppCard(title = if (bn) "আমার অ্যাকাউন্ট" else "My account") {
+            if (me == null || me.isGuest) {
+                Text(
+                    if (bn) "সাইন ইন ছাড়াই অর্ডার করা যায়। অ্যাকাউন্ট খুললে অন্য ফোনেও আপনার অর্ডার দেখতে পাবেন; এই ফোনের অর্ডার সঙ্গে চলে যাবে।"
+                    else "You can order without signing in. Create an account to see your orders on any phone; orders from this phone move with you.",
+                    style = MaterialTheme.typography.bodyMedium, color = Muted,
+                )
+                BigButton(text = if (bn) "সাইন ইন" else "Sign in", onClick = { app.requireSignIn() })
+                GhostButton(text = if (bn) "নতুন অ্যাকাউন্ট খুলুন" else "Create account", onClick = { app.requireSignIn(register = true) })
+            } else {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    AvatarCircle(me.name)
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(me.name, style = MaterialTheme.typography.titleMedium)
+                        Text("+91 ${me.phone}", style = MaterialTheme.typography.bodySmall, color = Muted)
+                        if (me.email.isNotBlank()) Text(me.email, style = MaterialTheme.typography.bodySmall, color = Muted)
+                    }
+                    Icon(Icons.Filled.Edit, contentDescription = "Edit", tint = AccentGreen,
+                        modifier = Modifier.size(22.dp).clickable { app.companyPage = "account" })
+                }
+                GhostButton(text = if (bn) "সাইন আউট" else "Sign out", onClick = { app.logout() })
             }
         }
 
@@ -147,7 +177,7 @@ fun ProfileTab(app: AppController, actions: PhoneActions) {
         }
 
         // 3. Saved Delivery Addresses
-        AppCard(
+        if (app.signedIn) AppCard(
             title = t("Saved Delivery Addresses"),
             trailing = {
                 SmallPill("+ Add") {
@@ -193,51 +223,17 @@ fun ProfileTab(app: AppController, actions: PhoneActions) {
             }
         }
 
-        // 4. Backend & Dummy API Switcher (Built for seamless transition to the Python Django backend)
-        AppCard(title = t("Backend & API Mode (Django Ready)")) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        text = if (useDummy) "Built-in Dummy API Mode (Active)" else "Live Python Django Backend Mode",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = AccentGreen,
-                    )
-                    Text(
-                        text = "Currently serving 10 fixed 100% organic products & orders from in-app DummyServer + SQLite. Switch off when your Django `/api/v1/` backend is deployed.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Muted,
-                    )
-                }
-                Spacer(Modifier.width(8.dp))
-                Switch(
-                    checked = useDummy,
-                    colors = SwitchDefaults.colors(checkedTrackColor = Leaf, checkedThumbColor = SunGold),
-                    onCheckedChange = { on ->
-                        useDummy = on
-                        app.updateBackendSettings(on, serverUrlInput, ownerWaInput)
-                    },
+        // 4. Developer settings (debug builds only; release builds always use the live server)
+        if (com.gmmdistributors.app.BuildConfig.DEBUG) {
+            AppCard(title = "Developer: server") {
+                AppField(
+                    label = "Django server URL",
+                    value = serverUrlInput,
+                    onChange = { serverUrlInput = it.trim() },
+                    hint = "e.g. http://192.168.1.5:8000 (run: python manage.py runserver 0.0.0.0:8000)",
                 )
+                BigButton(text = "Save & reload", onClick = { app.updateServerUrl(serverUrlInput) })
             }
-
-            AppField(
-                label = "Owner WhatsApp Number (with country code 91)",
-                value = ownerWaInput,
-                onChange = { ownerWaInput = it.filter { c -> c.isDigit() }.take(12) },
-                keyboard = KeyboardType.Phone,
-                hint = "Default: 919083732101 (Chikur Kumar Ray)",
-            )
-
-            AppField(
-                label = "Python Django Server URL (for Phase 2)",
-                value = serverUrlInput,
-                onChange = { serverUrlInput = it.trim() },
-                hint = "e.g., https://gmmdistributors.xyz or http://192.168.1.5:8000",
-            )
-
-            BigButton(
-                text = "Save Backend & WhatsApp Settings",
-                onClick = { app.updateBackendSettings(useDummy, serverUrlInput, ownerWaInput) },
-            )
         }
 
         // 5. Native Company & Leadership Pages (No external browser needed, matching Bas1Minute's AboutScreens)
@@ -423,5 +419,77 @@ fun CompanyPageScreen(
                 }
             }
         }
+    }
+}
+
+
+/** Edit name / email and delete the account (Google Play requires in-app account deletion). */
+@Composable
+fun AccountScreen(app: AppController, onBack: () -> Unit) {
+    val bn = app.language == "bn"
+    val me = app.me
+    var name by rememberSaveable { mutableStateOf(me?.name ?: "") }
+    var email by rememberSaveable { mutableStateOf(me?.email ?: "") }
+    var confirmDelete by remember { mutableStateOf(false) }
+    var deleteText by remember { mutableStateOf("") }
+
+    Column(
+        Modifier.fillMaxSize().background(Paper).imePadding().verticalScroll(rememberScrollState()).padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        Row(
+            Modifier.clip(RoundedCornerShape(50)).background(CardBg).border(1.dp, PaperLine, RoundedCornerShape(50))
+                .clickable(onClick = onBack).padding(horizontal = 14.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(Icons.Filled.ArrowBack, contentDescription = null, tint = AccentGreen, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(6.dp))
+            Text(if (bn) "ফিরে যান" else "Back", style = MaterialTheme.typography.labelLarge)
+        }
+        AppCard(title = if (bn) "আমার তথ্য" else "My details") {
+            AppField(label = if (bn) "নাম" else "Name", value = name, onChange = { name = it.take(80) })
+            AppField(label = if (bn) "ইমেল (ঐচ্ছিক)" else "Email (optional)", value = email, onChange = { email = it.trim().take(120) },
+                keyboard = KeyboardType.Email)
+            Text(
+                if (bn) "মোবাইল নম্বর বদলাতে আমাদের ফোন করুন।" else "To change your mobile number, please call us.",
+                style = MaterialTheme.typography.bodySmall, color = Muted,
+            )
+            BigButton(
+                text = if (bn) "সেভ করুন" else "Save",
+                enabled = !app.busy && name.isNotBlank(),
+                onClick = { app.updateProfile(name.trim(), email) },
+            )
+        }
+        AppCard(title = if (bn) "অ্যাকাউন্ট মুছে ফেলুন" else "Delete account") {
+            Text(
+                if (bn) "আপনার নাম, ঠিকানা ও লগইন মুছে যাবে। আইনি কারণে পুরনো অর্ডার ও GST ইনভয়েস নাম ছাড়া রাখা থাকবে।"
+                else "Your name, addresses and sign-in are removed. Past orders and GST invoices are kept without your name, as the law requires.",
+                style = MaterialTheme.typography.bodySmall, color = Muted,
+            )
+            GhostButton(text = if (bn) "অ্যাকাউন্ট মুছুন" else "Delete my account", danger = true, onClick = { confirmDelete = true })
+        }
+        Spacer(Modifier.height(24.dp))
+    }
+
+    if (confirmDelete) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { confirmDelete = false },
+            title = { Text(if (bn) "অ্যাকাউন্ট মুছবেন?" else "Delete your account?") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(if (bn) "নিশ্চিত করতে DELETE লিখুন।" else "Type DELETE to confirm.")
+                    AppField(label = "DELETE", value = deleteText, onChange = { deleteText = it.trim().uppercase().take(6) })
+                }
+            },
+            confirmButton = {
+                androidx.compose.material3.TextButton(
+                    enabled = deleteText == "DELETE" && !app.busy,
+                    onClick = { confirmDelete = false; app.deleteAccount() },
+                ) { Text(if (bn) "মুছে ফেলুন" else "Delete", color = Danger, fontWeight = FontWeight.Bold) }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(onClick = { confirmDelete = false }) { Text(if (bn) "না" else "Cancel") }
+            },
+        )
     }
 }

@@ -28,7 +28,9 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -65,8 +67,8 @@ fun DrawableImage(
 ) {
     val ctx = LocalContext.current
     val resId = remember(drawableName) {
-        val id = ctx.resources.getIdentifier(drawableName, "drawable", ctx.packageName)
-        if (id != 0) id else R.drawable.prod_premium_jackpot
+        val id = if (drawableName.isBlank()) 0 else ctx.resources.getIdentifier(drawableName, "drawable", ctx.packageName)
+        if (id != 0) id else R.drawable.gmm_logo
     }
     Image(
         painter = painterResource(id = resId),
@@ -310,5 +312,85 @@ fun AvatarCircle(text: String, size: Dp = 44.dp) {
             color = SunInk,
             style = MaterialTheme.typography.titleLarge,
         )
+    }
+}
+
+/** Small in-memory cache for product photos uploaded in the admin (no extra image library needed). */
+object RemoteImages {
+    private val cache = object : android.util.LruCache<String, androidx.compose.ui.graphics.ImageBitmap>(12 * 1024 * 1024) {
+        override fun sizeOf(key: String, value: androidx.compose.ui.graphics.ImageBitmap): Int = value.width * value.height * 4
+    }
+
+    fun cached(url: String): androidx.compose.ui.graphics.ImageBitmap? = cache.get(url)
+
+    /** Memory -> disk (survives restarts, works offline) -> network. */
+    suspend fun load(url: String, dir: java.io.File, maxPx: Int = 900): androidx.compose.ui.graphics.ImageBitmap? =
+        cached(url) ?: kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                val name = java.security.MessageDigest.getInstance("SHA-1").digest(url.toByteArray())
+                    .joinToString("") { "%02x".format(it) }
+                val file = java.io.File(java.io.File(dir, "img").apply { mkdirs() }, name)
+                val bytes = if (file.exists() && file.length() > 0) file.readBytes() else {
+                    val conn = java.net.URL(url).openConnection() as java.net.HttpURLConnection
+                    conn.connectTimeout = 10_000
+                    conn.readTimeout = 20_000
+                    val got = try {
+                        if (conn.responseCode !in 200..299) return@withContext null
+                        conn.inputStream.use { it.readBytes() }
+                    } finally {
+                        conn.disconnect()
+                    }
+                    runCatching { file.writeBytes(got) }
+                    got
+                }
+                val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+                var sample = 1
+                while (bounds.outWidth / (sample * 2) >= maxPx || bounds.outHeight / (sample * 2) >= maxPx) sample *= 2
+                val bmp = android.graphics.BitmapFactory.decodeByteArray(
+                    bytes, 0, bytes.size, android.graphics.BitmapFactory.Options().apply { inSampleSize = sample },
+                ) ?: return@withContext null
+                bmp.asImageBitmap().also { cache.put(url, it) }
+            } catch (e: Exception) {
+                null
+            }
+        }
+}
+
+/** Product photo: the admin-uploaded image when available, otherwise the picture bundled in the app. */
+@Composable
+fun ProductImage(
+    product: com.gmmdistributors.app.api.Product,
+    modifier: Modifier = Modifier,
+    contentScale: ContentScale = ContentScale.Fit,
+) {
+    val url = product.imageUrl
+    val imgDir = LocalContext.current.filesDir
+    val bitmap by androidx.compose.runtime.produceState(initialValue = if (url.isBlank()) null else RemoteImages.cached(url), url) {
+        if (url.isNotBlank() && value == null) value = RemoteImages.load(url, imgDir)
+    }
+    val bmp = bitmap
+    if (bmp != null) {
+        Image(bitmap = bmp, contentDescription = product.name, contentScale = contentScale, modifier = modifier)
+    } else {
+        DrawableImage(drawableName = product.drawableName, contentDescription = product.name, modifier = modifier, contentScale = contentScale)
+    }
+}
+
+/** Full-screen notice used while the catalogue loads or when the server cannot be reached. */
+@Composable
+fun StatusNotice(title: String, body: String, button: String? = null, onClick: () -> Unit = {}) {
+    Column(
+        Modifier.fillMaxSize().background(Paper).padding(24.dp),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(title, style = MaterialTheme.typography.headlineMedium, textAlign = TextAlign.Center)
+        Spacer(Modifier.height(8.dp))
+        Text(body, style = MaterialTheme.typography.bodyMedium, color = Muted, textAlign = TextAlign.Center)
+        if (button != null) {
+            Spacer(Modifier.height(18.dp))
+            BigButton(text = button, onClick = onClick)
+        }
     }
 }

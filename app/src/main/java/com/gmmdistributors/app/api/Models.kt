@@ -8,27 +8,35 @@ inline fun <T> JSONArray?.mapObjects(f: (JSONObject) -> T): List<T> {
     return (0 until length()).mapNotNull { optJSONObject(it)?.let(f) }
 }
 
+/** Business settings from the Django admin. No payment details are hard-coded in the app. */
 data class SiteConfig(
     val businessName: String = "GMM Distributors Private Limited",
-    val taglineEn: String = "100% Organic Fertilizer & Bio-Pesticide · Zero Chemicals",
-    val taglineBn: String = "১০০% জৈব সার ও জৈব কীটনাশক · রাসায়নিকমুক্ত চাষাবাদ",
-    val legalAddress: String = "Nirmala Bhawan, Fansi Bagan, Ward No. 13, Arambagh, Hooghly, West Bengal – 712601",
-    val cin: String = "U24299WB2020PTC240755",
-    val gstin: String = "19AAICG0000A1Z5",
+    val taglineEn: String = "100% Organic Fertilizer & Bio-Pesticide",
+    val taglineBn: String = "১০০% জৈব সার ও জৈব কীটনাশক",
+    val legalAddress: String = "",
+    val cin: String = "",
+    val gstin: String = "",
     val stateName: String = "West Bengal",
     val stateCode: String = "19",
-    val supportPhone: String = "9083732101",
-    val whatsappNumber: String = "919083732101",
-    val supportEmail: String = "ray.chikur@gmail.com",
-    val upiId: String = "gmmdistributors@sbi",
-    val bankAccountName: String = "GMM Distributors Private Limited",
-    val bankName: String = "State Bank of India (Arambagh Branch)",
-    val bankAccountNumber: String = "39876543210",
-    val bankIfsc: String = "SBIN0000014",
-    val minOrderValue: Double = 150.0,
-    val freeDeliveryAbove: Double = 1000.0,
+    val supportPhone: String = "",
+    val whatsappNumber: String = "",
+    val supportEmail: String = "",
+    val upiId: String = "",
+    val upiPayeeName: String = "",
+    val bankAccountName: String = "",
+    val bankName: String = "",
+    val bankAccountNumber: String = "",
+    val bankIfsc: String = "",
+    val minOrderValue: Double = 0.0,
+    val freeDeliveryAbove: Double? = null,
     val codEnabled: Boolean = true,
+    val codMinOrder: Double = 0.0,
+    val codMaxOrder: Double? = null,
+    val androidMinVersion: Int = 1,
 ) {
+    val upiReady: Boolean get() = upiId.contains("@")
+    val bankReady: Boolean get() = bankAccountNumber.isNotBlank() && bankIfsc.isNotBlank()
+
     fun toJson(): JSONObject = JSONObject()
         .put("business_name", businessName)
         .put("tagline_en", taglineEn)
@@ -42,41 +50,52 @@ data class SiteConfig(
         .put("whatsapp_number", whatsappNumber)
         .put("support_email", supportEmail)
         .put("upi_id", upiId)
+        .put("upi_payee_name", upiPayeeName)
         .put("bank_account_name", bankAccountName)
         .put("bank_name", bankName)
         .put("bank_account_number", bankAccountNumber)
         .put("bank_ifsc", bankIfsc)
         .put("min_order_value", minOrderValue)
-        .put("free_delivery_above", freeDeliveryAbove)
+        .put("free_delivery_above", freeDeliveryAbove ?: JSONObject.NULL)
         .put("cod_enabled", codEnabled)
+        .put("cod_min_order", codMinOrder)
+        .put("cod_max_order", codMaxOrder ?: JSONObject.NULL)
+        .put("android_min_version", androidMinVersion)
 
     companion object {
         fun from(j: JSONObject?): SiteConfig {
             if (j == null) return SiteConfig()
             return SiteConfig(
-                businessName = j.optString("business_name", "GMM Distributors Private Limited"),
-                taglineEn = j.optString("tagline_en", "100% Organic Fertilizer & Bio-Pesticide · Zero Chemicals"),
-                taglineBn = j.optString("tagline_bn", "১০০% জৈব সার ও জৈব কীটনাশক · রাসায়নিকমুক্ত চাষাবাদ"),
-                legalAddress = j.optString("legal_address", "Nirmala Bhawan, Fansi Bagan, Ward No. 13, Arambagh, Hooghly, West Bengal – 712601"),
-                cin = j.optString("cin", "U24299WB2020PTC240755"),
-                gstin = j.optString("gstin", "19AAICG0000A1Z5"),
+                businessName = j.optString("business_name").ifBlank { "GMM Distributors Private Limited" },
+                taglineEn = j.optString("tagline_en").ifBlank { "100% Organic Fertilizer & Bio-Pesticide" },
+                taglineBn = j.optString("tagline_bn").ifBlank { "১০০% জৈব সার ও জৈব কীটনাশক" },
+                legalAddress = j.optString("legal_address"),
+                cin = j.optString("cin"),
+                gstin = j.optString("gstin"),
                 stateName = j.optString("state_name", "West Bengal"),
                 stateCode = j.optString("state_code", "19"),
-                supportPhone = j.optString("support_phone", "9083732101"),
-                whatsappNumber = j.optString("whatsapp_number", "919083732101"),
-                supportEmail = j.optString("support_email", "ray.chikur@gmail.com"),
-                upiId = j.optString("upi_id", "gmmdistributors@sbi"),
-                bankAccountName = j.optString("bank_account_name", "GMM Distributors Private Limited"),
-                bankName = j.optString("bank_name", "State Bank of India (Arambagh Branch)"),
-                bankAccountNumber = j.optString("bank_account_number", "39876543210"),
-                bankIfsc = j.optString("bank_ifsc", "SBIN0000014"),
-                minOrderValue = j.optDouble("min_order_value", 150.0),
-                freeDeliveryAbove = j.optDouble("free_delivery_above", 1000.0),
+                supportPhone = j.optString("support_phone"),
+                whatsappNumber = j.optString("whatsapp_number"),
+                supportEmail = j.optString("support_email"),
+                upiId = j.optString("upi_id"),
+                upiPayeeName = j.optString("upi_payee_name"),
+                bankAccountName = j.optString("bank_account_name"),
+                bankName = j.optString("bank_name"),
+                bankAccountNumber = j.optString("bank_account_number"),
+                bankIfsc = j.optString("bank_ifsc"),
+                minOrderValue = j.optDouble("min_order_value", 0.0),
+                freeDeliveryAbove = j.optNullableDouble("free_delivery_above"),
                 codEnabled = j.optBoolean("cod_enabled", true),
+                codMinOrder = j.optDouble("cod_min_order", 0.0),
+                codMaxOrder = j.optNullableDouble("cod_max_order"),
+                androidMinVersion = j.optInt("android_min_version", 1),
             )
         }
     }
 }
+
+fun JSONObject.optNullableDouble(key: String): Double? =
+    if (has(key) && !isNull(key)) optDouble(key).takeIf { !it.isNaN() } else null
 
 data class Category(
     val id: Int,
@@ -212,6 +231,7 @@ data class Product(
     val benefits: List<String>,
     val benefitsBn: List<String>,
     val drawableName: String,
+    val imageUrl: String = "",
     val isFeatured: Boolean,
     val sortOrder: Int,
     val variants: List<ProductVariant>,
@@ -240,6 +260,7 @@ data class Product(
         .put("benefits", JSONArray(benefits))
         .put("benefits_bn", JSONArray(benefitsBn))
         .put("drawable_name", drawableName)
+        .put("image_url", imageUrl)
         .put("is_featured", isFeatured)
         .put("sort_order", sortOrder)
         .put("variants", JSONArray(variants.map { it.toJson() }))
@@ -264,7 +285,8 @@ data class Product(
                 compositionBn = j.optString("composition_bn"),
                 benefits = bEn,
                 benefitsBn = bBn,
-                drawableName = j.optString("drawable_name", "prod_premium_jackpot"),
+                drawableName = j.optString("drawable_name"),
+                imageUrl = j.optString("image_url"),
                 isFeatured = j.optBoolean("is_featured"),
                 sortOrder = j.optInt("sort_order"),
                 variants = j.optJSONArray("variants").mapObjects { ProductVariant.from(it) },
@@ -306,7 +328,9 @@ data class Address(
     val fullName: String,
     val phone: String,
     val line1: String,
+    val line2: String = "",
     val villageTown: String,
+    val postOffice: String = "",
     val district: String = "Hooghly",
     val state: String = "West Bengal",
     val pincode: String = "712601",
@@ -315,6 +339,7 @@ data class Address(
 ) {
     fun formattedLine(): String = buildString {
         append(line1)
+        if (line2.isNotBlank()) append(", $line2")
         if (landmark.isNotBlank()) append(" (Near $landmark)")
         append(", $villageTown, $district, $state – $pincode")
     }
@@ -324,7 +349,9 @@ data class Address(
         .put("full_name", fullName)
         .put("phone", phone)
         .put("line1", line1)
+        .put("line2", line2)
         .put("village_town", villageTown)
+        .put("post_office", postOffice)
         .put("district", district)
         .put("state", state)
         .put("pincode", pincode)
@@ -337,12 +364,14 @@ data class Address(
             fullName = j.optString("full_name"),
             phone = j.optString("phone"),
             line1 = j.optString("line1"),
+            line2 = j.optString("line2"),
             villageTown = j.optString("village_town"),
+            postOffice = j.optString("post_office"),
             district = j.optString("district", "Hooghly"),
             state = j.optString("state", "West Bengal"),
             pincode = j.optString("pincode", "712601"),
             landmark = j.optString("landmark", ""),
-            isDefault = j.optBoolean("is_default", true),
+            isDefault = j.optBoolean("is_default", false),
         )
     }
 }
@@ -405,12 +434,15 @@ data class OrderItem(
     }
 }
 
+data class TimelineEntry(val status: String, val at: String, val note: String)
+
 data class Order(
     val orderNo: String,
     val status: String,         // PLACED, CONFIRMED, PACKED, DISPATCHED, DELIVERED, CANCELLED
     val paymentMethod: String,  // UPI, BANK, COD
-    val paymentStatus: String,  // AWAITING_WHATSAPP_PAYMENT, UTR_SUBMITTED, VERIFIED, COD_DUE
+    val paymentStatus: String,  // AWAITING_PROOF, PROOF_SUBMITTED, VERIFIED, REJECTED, COD_DUE, COLLECTED
     val utrReference: String = "",
+    val rejectReason: String = "",
     val address: Address,
     val items: List<OrderItem>,
     val subtotal: Double,
@@ -418,26 +450,38 @@ data class Order(
     val deliveryFee: Double,
     val total: Double,
     val customerNote: String = "",
+    val cancelReason: String = "",
     val createdAt: String,
-    val whatsappSent: Boolean = false,
+    val createdAtIso: String = "",
+    val canCancel: Boolean = false,
+    val canPay: Boolean = false,
+    val invoiceAvailable: Boolean = false,
+    val invoiceNo: String = "",
+    val timeline: List<TimelineEntry> = emptyList(),
+    val whatsappSent: Boolean = false,  // local only: has the customer sent this order on WhatsApp?
+    val priceChanged: Boolean = false,  // sent later at today's price, which differs from what the phone showed
+    val clientTotal: Double? = null,
+    val source: String = "app",
 ) {
-    val canCancel: Boolean get() = status == "PLACED"
+    val isActive: Boolean get() = status in setOf("PLACED", "CONFIRMED", "PACKED", "DISPATCHED")
 
     fun paymentMethodLabel(lang: String): String = when (paymentMethod) {
-        "UPI" -> if (lang == "bn") "UPI ট্রান্সফার (হোয়াটসঅ্যাপের মাধ্যমে)" else "Manual UPI (via WhatsApp)"
-        "BANK" -> if (lang == "bn") "ব্যাংক ট্রান্সফার / NEFT (হোয়াটসঅ্যাপের মাধ্যমে)" else "Manual Bank Transfer (via WhatsApp)"
-        else -> if (lang == "bn") "ক্যাশ অন ডেলিভারি (COD)" else "Cash on Delivery (COD)"
+        "UPI" -> if (lang == "bn") "UPI পেমেন্ট" else "UPI payment"
+        "BANK" -> if (lang == "bn") "ব্যাংক ট্রান্সফার (NEFT/IMPS)" else "Bank transfer (NEFT/IMPS)"
+        else -> if (lang == "bn") "ক্যাশ অন ডেলিভারি" else "Cash on delivery"
     }
 
-    fun statusLabel(lang: String): String = when (status) {
-        "PLACED" -> if (lang == "bn") "অর্ডার করা হয়েছে" else "Placed"
-        "CONFIRMED" -> if (lang == "bn") "নিশ্চিত হয়েছে" else "Confirmed"
-        "PACKED" -> if (lang == "bn") "প্যাক করা হয়েছে" else "Packed"
-        "DISPATCHED" -> if (lang == "bn") "পাঠানো হয়েছে" else "Dispatched"
-        "DELIVERED" -> if (lang == "bn") "ডেলিভারি সম্পন্ন" else "Delivered"
-        "CANCELLED" -> if (lang == "bn") "বাতিল" else "Cancelled"
-        else -> status
+    fun paymentStatusLabel(lang: String): String = when (paymentStatus) {
+        "AWAITING_PROOF" -> if (lang == "bn") "পেমেন্টের অপেক্ষায়" else "Awaiting payment"
+        "PROOF_SUBMITTED" -> if (lang == "bn") "UTR জমা হয়েছে · যাচাই চলছে" else "UTR sent · being verified"
+        "VERIFIED" -> if (lang == "bn") "পেমেন্ট যাচাই হয়েছে ✓" else "Payment verified ✓"
+        "REJECTED" -> if (lang == "bn") "UTR মেলেনি · আবার পাঠান" else "UTR not matched · please resend"
+        "COD_DUE" -> if (lang == "bn") "ডেলিভারির সময় দেবেন" else "Pay on delivery"
+        "COLLECTED" -> if (lang == "bn") "নগদ পাওয়া গেছে ✓" else "Cash received ✓"
+        else -> paymentStatus
     }
+
+    fun statusLabel(lang: String): String = statusLabelFor(status, lang)
 
     fun toJson(): JSONObject = JSONObject()
         .put("order_no", orderNo)
@@ -445,6 +489,7 @@ data class Order(
         .put("payment_method", paymentMethod)
         .put("payment_status", paymentStatus)
         .put("utr_reference", utrReference)
+        .put("reject_reason", rejectReason)
         .put("address_snapshot", address.toJson())
         .put("items", JSONArray(items.map { it.toJson() }))
         .put("subtotal", subtotal)
@@ -452,16 +497,37 @@ data class Order(
         .put("delivery_fee", deliveryFee)
         .put("total", total)
         .put("customer_note", customerNote)
+        .put("cancel_reason", cancelReason)
         .put("created_at", createdAt)
+        .put("created_at_iso", createdAtIso)
+        .put("can_cancel", canCancel)
+        .put("can_pay", canPay)
+        .put("invoice_available", invoiceAvailable)
+        .put("invoice_no", invoiceNo)
+        .put("timeline", JSONArray(timeline.map { JSONObject().put("status", it.status).put("at", it.at).put("note", it.note) }))
         .put("whatsapp_sent", whatsappSent)
+        .put("price_changed", priceChanged)
+        .put("client_total", clientTotal ?: JSONObject.NULL)
+        .put("source", source)
 
     companion object {
+        fun statusLabelFor(status: String, lang: String): String = when (status) {
+            "PLACED" -> if (lang == "bn") "অর্ডার করা হয়েছে" else "Placed"
+            "CONFIRMED" -> if (lang == "bn") "নিশ্চিত হয়েছে" else "Confirmed"
+            "PACKED" -> if (lang == "bn") "প্যাক করা হয়েছে" else "Packed"
+            "DISPATCHED" -> if (lang == "bn") "পাঠানো হয়েছে" else "Dispatched"
+            "DELIVERED" -> if (lang == "bn") "ডেলিভারি সম্পন্ন" else "Delivered"
+            "CANCELLED" -> if (lang == "bn") "বাতিল" else "Cancelled"
+            else -> status
+        }
+
         fun from(j: JSONObject) = Order(
             orderNo = j.optString("order_no"),
             status = j.optString("status", "PLACED"),
             paymentMethod = j.optString("payment_method", "UPI"),
-            paymentStatus = j.optString("payment_status", "AWAITING_WHATSAPP_PAYMENT"),
+            paymentStatus = j.optString("payment_status", "AWAITING_PROOF"),
             utrReference = j.optString("utr_reference", ""),
+            rejectReason = j.optString("reject_reason", ""),
             address = Address.from(j.optJSONObject("address_snapshot") ?: JSONObject()),
             items = j.optJSONArray("items").mapObjects { OrderItem.from(it) },
             subtotal = j.optDouble("subtotal", 0.0),
@@ -469,9 +535,171 @@ data class Order(
             deliveryFee = j.optDouble("delivery_fee", 0.0),
             total = j.optDouble("total", 0.0),
             customerNote = j.optString("customer_note", ""),
+            cancelReason = j.optString("cancel_reason", ""),
             createdAt = j.optString("created_at", ""),
+            createdAtIso = j.optString("created_at_iso", ""),
+            canCancel = j.optBoolean("can_cancel", false),
+            canPay = j.optBoolean("can_pay", false),
+            invoiceAvailable = j.optBoolean("invoice_available", false),
+            invoiceNo = j.optString("invoice_no", ""),
+            timeline = j.optJSONArray("timeline").mapObjects { TimelineEntry(it.optString("status"), it.optString("at"), it.optString("note")) },
             whatsappSent = j.optBoolean("whatsapp_sent", false),
+            priceChanged = j.optBoolean("price_changed", false),
+            clientTotal = j.optNullableDouble("client_total"),
+            source = j.optString("source", "app"),
         )
+    }
+}
+
+/** The account on this phone. isGuest = created silently so people can order without signing in. */
+data class Me(val id: Long, val name: String, val phone: String, val email: String, val language: String, val isGuest: Boolean = false) {
+    fun toJson(): JSONObject = JSONObject().put("id", id).put("name", name).put("phone", phone).put("email", email)
+        .put("language", language).put("is_guest", isGuest)
+
+    companion object {
+        fun from(j: JSONObject?): Me? = j?.let {
+            Me(it.optLong("id"), it.optString("name"), it.optString("phone"), it.optString("email"),
+                it.optString("language", "bn"), it.optBoolean("is_guest", false))
+        }
+    }
+}
+
+/** Line of an order saved on the phone, frozen at the price the customer saw. */
+data class PendingLine(val variantId: Int, val productName: String, val productNameBn: String, val label: String, val quantity: Int, val price: Double) {
+    fun toJson(): JSONObject = JSONObject().put("variant_id", variantId).put("product_name", productName)
+        .put("product_name_bn", productNameBn).put("label", label).put("quantity", quantity).put("price", price)
+
+    fun localizedName(lang: String) = if (lang == "bn" && productNameBn.isNotBlank()) productNameBn else productName
+
+    companion object {
+        fun from(j: JSONObject) = PendingLine(j.optInt("variant_id"), j.optString("product_name"), j.optString("product_name_bn"),
+            j.optString("label"), j.optInt("quantity"), j.optDouble("price", 0.0))
+    }
+}
+
+/**
+ * An order made while offline (or when the send failed). Stored in SQLite and sent automatically
+ * when the phone is online again. [key] doubles as the server idempotency key, so a retry after a
+ * dropped connection can never create a second order.
+ */
+data class PendingOrder(
+    val key: String,
+    val createdAt: Long,
+    val paymentMethod: String,
+    val address: Address,
+    val lines: List<PendingLine>,
+    val expectedTotal: Double,
+    val note: String = "",
+    val status: String = "waiting",  // waiting | failed
+    val error: String = "",
+) {
+    val itemsCount: Int get() = lines.sumOf { it.quantity }
+
+    fun toJson(): JSONObject = JSONObject().put("key", key).put("created_at", createdAt).put("payment_method", paymentMethod)
+        .put("address", address.toJson()).put("lines", JSONArray(lines.map { it.toJson() })).put("expected_total", expectedTotal)
+        .put("note", note).put("status", status).put("error", error)
+
+    /** Body for /api/v1/orders/place/ */
+    fun placeBody(): JSONObject {
+        val items = JSONArray()
+        lines.forEach { items.put(JSONObject().put("variant_id", it.variantId).put("quantity", it.quantity)) }
+        val addr = address.toJson().apply { remove("id"); remove("is_default") }
+        return JSONObject().put("address", addr).put("items", items).put("payment_method", paymentMethod)
+            .put("note", note).put("idempotency_key", key).put("expected_total", expectedTotal).put("offline", true)
+    }
+
+    companion object {
+        fun from(j: JSONObject) = PendingOrder(
+            key = j.optString("key"), createdAt = j.optLong("created_at"), paymentMethod = j.optString("payment_method", "COD"),
+            address = Address.from(j.optJSONObject("address") ?: JSONObject()),
+            lines = j.optJSONArray("lines").mapObjects { PendingLine.from(it) },
+            expectedTotal = j.optDouble("expected_total", 0.0), note = j.optString("note"),
+            status = j.optString("status", "waiting"), error = j.optString("error"),
+        )
+    }
+}
+
+/** Live check from /api/v1/quote/ just before an order is sent. */
+data class QuoteLine(val variantId: Int, val quantity: Int, val available: Boolean, val price: Double, val stock: Int, val priceChanged: Boolean, val oldPrice: Double?)
+
+data class Quote(
+    val lines: List<QuoteLine>,
+    val subtotal: Double,
+    val deliveryFee: Double?,
+    val total: Double,
+    val codAllowed: Boolean,
+    val problemCodes: List<String>,
+    val catalogVersion: String,
+) {
+    val priceChanged: Boolean get() = "price" in problemCodes
+    val stockShort: Boolean get() = "stock" in problemCodes || "unavailable" in problemCodes
+    val blocked: Boolean get() = problemCodes.any { it in setOf("pincode", "min_order", "max_qty") }
+
+    companion object {
+        fun from(j: JSONObject): Quote {
+            val probs = j.optJSONArray("problems").mapObjects { it.optString("code") }
+            return Quote(
+                lines = j.optJSONArray("lines").mapObjects {
+                    QuoteLine(it.optInt("variant_id"), it.optInt("quantity"), it.optBoolean("available"), it.optDouble("price", 0.0),
+                        it.optInt("stock"), it.optBoolean("price_changed"), it.optNullableDouble("old_price"))
+                },
+                subtotal = j.optDouble("subtotal", 0.0),
+                deliveryFee = j.optNullableDouble("delivery_fee"),
+                total = j.optDouble("total", 0.0),
+                codAllowed = j.optBoolean("cod_allowed", true),
+                problemCodes = probs,
+                catalogVersion = j.optString("catalog_version"),
+            )
+        }
+    }
+}
+
+data class InvoiceSeller(val name: String, val gstin: String, val cin: String, val address: String, val state: String, val stateCode: String)
+
+/** Tax invoice issued by the server (`apps/invoicing`). Numbers are real, sequential and never reused. */
+data class Invoice(
+    val invoiceNo: String,
+    val issuedDate: String,
+    val orderNo: String,
+    val orderDate: String,
+    val seller: InvoiceSeller,
+    val buyer: Address,
+    val isInterstate: Boolean,
+    val items: List<OrderItem>,
+    val taxableTotal: Double,
+    val cgst: Double,
+    val sgst: Double,
+    val igst: Double,
+    val taxTotal: Double,
+    val deliveryFee: Double,
+    val total: Double,
+    val paymentMethodLabel: String,
+    val paymentStatusLabel: String,
+) {
+    companion object {
+        fun from(j: JSONObject): Invoice {
+            val s = j.optJSONObject("seller") ?: JSONObject()
+            return Invoice(
+                invoiceNo = j.optString("invoice_no"),
+                issuedDate = j.optString("issued_date"),
+                orderNo = j.optString("order_no"),
+                orderDate = j.optString("order_date"),
+                seller = InvoiceSeller(s.optString("name"), s.optString("gstin"), s.optString("cin"),
+                    s.optString("address"), s.optString("state"), s.optString("state_code")),
+                buyer = Address.from(j.optJSONObject("buyer") ?: JSONObject()),
+                isInterstate = j.optBoolean("is_interstate"),
+                items = j.optJSONArray("items").mapObjects { OrderItem.from(it) },
+                taxableTotal = j.optDouble("taxable_total", 0.0),
+                cgst = j.optDouble("cgst", 0.0),
+                sgst = j.optDouble("sgst", 0.0),
+                igst = j.optDouble("igst", 0.0),
+                taxTotal = j.optDouble("tax_total", 0.0),
+                deliveryFee = j.optDouble("delivery_fee", 0.0),
+                total = j.optDouble("total", 0.0),
+                paymentMethodLabel = j.optString("payment_method_label"),
+                paymentStatusLabel = j.optString("payment_status_label"),
+            )
+        }
     }
 }
 
@@ -480,12 +708,14 @@ data class CatalogPayload(
     val categories: List<Category>,
     val products: List<Product>,
     val pins: List<ServiceablePin>,
+    val version: String = "",
 ) {
     fun toJson(): JSONObject = JSONObject()
         .put("site", config.toJson())
         .put("categories", JSONArray(categories.map { it.toJson() }))
         .put("products", JSONArray(products.map { it.toJson() }))
         .put("serviceable_pins", JSONArray(pins.map { it.toJson() }))
+        .put("version", version)
 
     companion object {
         fun from(j: JSONObject) = CatalogPayload(
@@ -493,6 +723,7 @@ data class CatalogPayload(
             categories = j.optJSONArray("categories").mapObjects { Category.from(it) },
             products = j.optJSONArray("products").mapObjects { Product.from(it) },
             pins = j.optJSONArray("serviceable_pins").mapObjects { ServiceablePin.from(it) },
+            version = j.optString("version"),
         )
     }
 }

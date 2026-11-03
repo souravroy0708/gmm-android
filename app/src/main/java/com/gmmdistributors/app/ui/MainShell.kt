@@ -67,11 +67,14 @@ import com.gmmdistributors.app.api.Order
 
 data class PhoneActions(
     val onSendOrderWhatsApp: (Order) -> Unit,
+    val onPayUpi: (Order) -> Unit,
+    val onShareInvoicePdf: (com.gmmdistributors.app.api.Invoice) -> Unit,
     val onSendEnquiryWhatsApp: (String) -> Unit,
     val onShareTextWhatsApp: (String) -> Unit,
     val onShareImage: (Bitmap, String) -> Unit,
     val onCallSupport: (String) -> Unit,
     val onCopyText: (String, String) -> Unit,
+    val onSendSms: (String, String) -> Unit = { _, _ -> },
 )
 
 private data class NavTabItem(val tab: Tab, val label: String, val icon: ImageVector)
@@ -101,7 +104,17 @@ fun MainShell(app: AppController, actions: PhoneActions) {
     Scaffold(
         snackbarHost = { SnackbarHost(snackbar) },
         topBar = {
-            GmmTopBar(app = app, onCall = { actions.onCallSupport(app.siteConfig.supportPhone) })
+            Column {
+                GmmTopBar(app = app, onCall = { actions.onCallSupport(app.siteConfig.supportPhone) })
+                if (app.offline && app.products.isNotEmpty()) {
+                    Text(
+                        text = if (app.language == "bn") "📶 অফলাইন · সব দেখা ও অর্ডার করা যাবে, নেট এলে পাঠানো হবে" else "📶 Offline · browse and order; we send it when you're online",
+                        color = SunInk,
+                        style = MaterialTheme.typography.labelMedium,
+                        modifier = Modifier.fillMaxWidth().background(SunGold).clickable { app.refresh() }.padding(horizontal = 14.dp, vertical = 6.dp),
+                    )
+                }
+            }
         },
         bottomBar = {
             Column {
@@ -120,6 +133,9 @@ fun MainShell(app: AppController, actions: PhoneActions) {
                         NavigationBarItem(
                             selected = isSelected,
                             onClick = {
+                                app.newlyPlacedOrder = null
+                                app.queuedOrder = null
+                                app.authOpen = false
                                 if (item.tab == Tab.Shop) app.openProductSlug = null
                                 if (item.tab == Tab.Advisory) { app.openCropSlug = null; app.thoughtCardOpen = false }
                                 if (item.tab == Tab.Orders) { app.openOrderNo = null; app.invoiceOrderNo = null }
@@ -157,20 +173,37 @@ fun MainShell(app: AppController, actions: PhoneActions) {
         containerColor = Paper,
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
     ) { padding ->
-        // Instant WhatsApp order confirmation dialog right after placing an order
-        app.newlyPlacedOrder?.let { placed ->
-            WhatsAppOrderPromptDialog(
-                order = placed,
-                lang = app.language,
-                onSendWhatsApp = {
-                    app.newlyPlacedOrder = null
-                    actions.onSendOrderWhatsApp(placed)
-                },
-                onDismiss = {
-                    app.newlyPlacedOrder = null
-                },
-            )
-        }
+        PriceReviewDialog(app)
+        val placed = app.newlyPlacedOrder
+        val queued = app.queuedOrder
+        if (queued != null) {
+            BackHandler { app.queuedOrder = null }
+            Box(Modifier.fillMaxSize().padding(padding)) {
+                QueuedOrderScreen(
+                    order = queued,
+                    lang = app.language,
+                    canSms = app.siteConfig.supportPhone.isNotBlank(),
+                    onSms = { actions.onSendSms(app.siteConfig.supportPhone, app.buildSmsOrder(queued)) },
+                    onDone = { app.queuedOrder = null; app.tab = Tab.Orders },
+                )
+            }
+        } else if (placed != null) {
+            BackHandler { app.newlyPlacedOrder = null }
+            Box(Modifier.fillMaxSize().padding(padding)) {
+                OrderSuccessScreen(
+                    order = placed,
+                    lang = app.language,
+                    onPrimary = { app.newlyPlacedOrder = null; app.tab = Tab.Orders; app.openOrderNo = placed.orderNo },
+                    onWhatsApp = if (app.ownerWhatsapp.isNotBlank()) ({ actions.onSendOrderWhatsApp(placed) }) else null,
+                    onContinue = { app.newlyPlacedOrder = null; app.openOrderNo = null; app.tab = Tab.Shop },
+                )
+            }
+        } else if (app.authOpen) {
+            BackHandler { app.authOpen = false }
+            Box(Modifier.fillMaxSize().padding(padding)) {
+                AuthScreen(app = app, onBack = { app.authOpen = false })
+            }
+        } else {
 
         val screenKey = "${app.tab}:${app.openProductSlug}:${app.openCropSlug}:${app.thoughtCardOpen}:${app.openOrderNo}:${app.invoiceOrderNo}:${app.companyPage}:${app.addingAddress}"
         AnimatedContent(
@@ -182,6 +215,24 @@ fun MainShell(app: AppController, actions: PhoneActions) {
             modifier = Modifier.fillMaxSize().padding(padding),
         ) { _ ->
             Box(Modifier.fillMaxSize()) {
+                if (app.needsUpdate) {
+                    StatusNotice(
+                        title = if (app.language == "bn") "অ্যাপ আপডেট করুন" else "Please update the app",
+                        body = if (app.language == "bn") "এই সংস্করণ আর চলে না। নতুন সংস্করণ ইনস্টল করুন।"
+                        else "This version of the GMM app is no longer supported. Please install the latest version.",
+                    )
+                } else if (app.products.isEmpty() && (app.tab == Tab.Shop || app.tab == Tab.Cart)) {
+                    if (!app.catalogLoaded || app.refreshing) {
+                        HomeSkeleton()
+                    } else {
+                        StatusNotice(
+                            title = if (app.language == "bn") "সংযোগ নেই" else "Can't reach GMM",
+                            body = if (app.language == "bn") "ইন্টারনেট চালু করে আবার চেষ্টা করুন।" else "Check your internet connection and try again.",
+                            button = if (app.language == "bn") "আবার চেষ্টা করুন" else "Try again",
+                            onClick = { app.refresh() },
+                        )
+                    }
+                } else {
                 when (app.tab) {
                     Tab.Shop -> {
                         val openProd = app.openProductSlug?.let { slug -> app.products.firstOrNull { it.slug == slug } }
@@ -209,7 +260,7 @@ fun MainShell(app: AppController, actions: PhoneActions) {
                                 )
                             }
                             app.openCropSlug != null -> {
-                                val guide = com.gmmdistributors.app.DummyCatalog.CROP_GUIDES.firstOrNull { it.slug == app.openCropSlug }
+                                val guide = com.gmmdistributors.app.AdvisoryContent.CROP_GUIDES.firstOrNull { it.slug == app.openCropSlug }
                                 if (guide != null) {
                                     BackHandler { app.openCropSlug = null }
                                     CropDetailScreen(
@@ -240,15 +291,12 @@ fun MainShell(app: AppController, actions: PhoneActions) {
                     }
 
                     Tab.Orders -> {
-                        val invOrder = app.invoiceOrderNo?.let { no -> app.orders.firstOrNull { it.orderNo == no } }
                         val detailOrder = app.openOrderNo?.let { no -> app.orders.firstOrNull { it.orderNo == no } }
                         when {
-                            invOrder != null -> {
+                            app.invoiceOrderNo != null -> {
                                 BackHandler { app.invoiceOrderNo = null }
                                 InvoiceScreen(
-                                    order = invOrder,
-                                    site = app.siteConfig,
-                                    lang = app.language,
+                                    app = app,
                                     actions = actions,
                                     onBack = { app.invoiceOrderNo = null },
                                 )
@@ -276,6 +324,10 @@ fun MainShell(app: AppController, actions: PhoneActions) {
                                     onBack = { app.addingAddress = false; app.editingAddress = null },
                                 )
                             }
+                            app.companyPage == "account" && app.me != null -> {
+                                BackHandler { app.companyPage = null }
+                                AccountScreen(app = app, onBack = { app.companyPage = null })
+                            }
                             app.companyPage != null -> {
                                 BackHandler { app.companyPage = null }
                                 CompanyPageScreen(
@@ -289,8 +341,10 @@ fun MainShell(app: AppController, actions: PhoneActions) {
                         }
                     }
                 }
+                }
             }
         }
+    }
     }
 }
 
