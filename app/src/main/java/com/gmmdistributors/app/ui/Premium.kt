@@ -21,7 +21,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Call
-import androidx.compose.material.icons.filled.Chat
+import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.filled.Grass
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.RiceBowl
@@ -221,7 +221,7 @@ fun HelpStrip(lang: String, phone: String, showWhatsApp: Boolean, onCall: () -> 
                 HelpButton(Icons.Filled.Call, if (bn) "ফোন করুন" else "Call", SunGold, SunInk, Modifier.weight(1f), onCall)
             }
             if (showWhatsApp) {
-                HelpButton(Icons.Filled.Chat, "WhatsApp", WhatsAppGreen, Color.White, Modifier.weight(1f), onWhatsApp)
+                HelpButton(Icons.AutoMirrored.Filled.Chat, "WhatsApp", WhatsAppGreen, Color.White, Modifier.weight(1f), onWhatsApp)
             }
         }
     }

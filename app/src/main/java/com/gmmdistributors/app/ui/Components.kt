@@ -50,7 +50,7 @@ import java.text.NumberFormat
 import java.util.Locale
 
 fun formatRupees(amount: Double): String {
-    val nf = NumberFormat.getNumberInstance(Locale("en", "IN")).apply {
+    val nf = NumberFormat.getNumberInstance(Locale.forLanguageTag("en-IN")).apply {
         maximumFractionDigits = if (amount % 1.0 == 0.0) 0 else 2
         minimumFractionDigits = 0
     }

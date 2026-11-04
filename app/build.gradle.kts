@@ -100,4 +100,7 @@ dependencies {
     implementation(libs.coroutines.android)
     implementation(libs.work.runtime.ktx)
     implementation(libs.play.app.update.ktx)  // Google Play in-app updates (mandatory update)
+    // Play's update library pulls in an ancient Fragment (1.0) transitively; the Activity Result APIs
+    // (photo picker, update flow) need >= 1.3. Pin a current one (R8 removes what we do not use).
+    implementation(libs.fragment)
 }

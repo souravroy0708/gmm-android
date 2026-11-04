@@ -16,7 +16,7 @@ object InvoicePdf {
     private const val H = 842
     private const val M = 36f
 
-    private fun rs(v: Double): String = "Rs. " + NumberFormat.getNumberInstance(Locale("en", "IN")).apply {
+    private fun rs(v: Double): String = "Rs. " + NumberFormat.getNumberInstance(Locale.forLanguageTag("en-IN")).apply {
         minimumFractionDigits = 2; maximumFractionDigits = 2
     }.format(v)
 

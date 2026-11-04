@@ -21,7 +21,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.Code
@@ -375,7 +375,7 @@ fun CompanyPageScreen(
                 .padding(horizontal = 14.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Icon(Icons.Filled.ArrowBack, contentDescription = "Back", tint = AccentGreen, modifier = Modifier.size(18.dp))
+            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = AccentGreen, modifier = Modifier.size(18.dp))
             Spacer(Modifier.width(6.dp))
             Text(if (lang == "bn") "প্রোফাইলে ফিরে যান" else "Back to Profile", style = MaterialTheme.typography.labelLarge)
         }
@@ -508,7 +508,7 @@ fun AccountScreen(app: AppController, onBack: () -> Unit) {
                 .clickable(onClick = onBack).padding(horizontal = 14.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Icon(Icons.Filled.ArrowBack, contentDescription = null, tint = AccentGreen, modifier = Modifier.size(18.dp))
+            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null, tint = AccentGreen, modifier = Modifier.size(18.dp))
             Spacer(Modifier.width(6.dp))
             Text(if (bn) "ফিরে যান" else "Back", style = MaterialTheme.typography.labelLarge)
         }
