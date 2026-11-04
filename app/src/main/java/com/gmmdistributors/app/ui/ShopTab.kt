@@ -137,23 +137,19 @@ fun ShopTab(app: AppController, actions: PhoneActions) {
                 Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
-                // Three picture categories (tap again to show everything)
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-                    listOf(
-                        Triple("fertilizer", if (bn) "সার" else "Fertilizer", if (bn) "মাটি ও ফলন" else "Soil & yield"),
-                        Triple("pesticide", if (bn) "কীটনাশক" else "Pest care", if (bn) "নিম ও জৈব" else "Neem & bio"),
-                        Triple("food", if (bn) "খাবার" else "Food", if (bn) "চাল, তেল, মধু" else "Rice, oil, honey"),
-                    ).filter { it.first in kinds }.forEach { (kind, title, sub) ->
-                        CategoryTile(
-                            title = title, subtitle = sub, kind = kind, selected = filter == kind,
-                            modifier = Modifier.weight(1f),
-                            onClick = { app.selectedCategorySlug = if (filter == kind) "all" else kind },
-                        )
-                    }
-                }
+                // Offer carousel (admin: Home banners) and category circles
+                if (filter == "all" && query.isBlank()) HeroCarousel(app.banners, lang) { app.openBanner(it) }
+                CategoryCircles(
+                    kinds = listOf("fertilizer", "pesticide", "food").filter { it in kinds },
+                    selected = filter, lang = lang,
+                ) { k -> app.selectedCategorySlug = if (k == filter && k != "all") "all" else k }
 
                 if (reorder != null && filter == "all" && query.isBlank()) {
                     ReorderCard(order = reorder, lang = lang, onReorder = { app.reorder(reorder) })
+                }
+                if (filter == "all" && query.isBlank()) {
+                    ProductRail(if (bn) "❤ আপনার পছন্দের তালিকা" else "❤ Your wishlist", app.products.filter { it.id in app.wishlist }, app)
+                    ProductRail(if (bn) "⭐ সবচেয়ে বেশি বিক্রি" else "⭐ Bestsellers", app.products.filter { it.isFeatured }, app)
                 }
 
                 SectionHeader(
@@ -183,8 +179,13 @@ fun ShopTab(app: AppController, actions: PhoneActions) {
                                     lang = lang,
                                     qtyInCart = v?.let { app.cartQuantities[it.id] } ?: 0,
                                     modifier = Modifier.weight(1f),
+                                    wished = p.id in app.wishlist,
+                                    onWish = { app.toggleWish(p.id) },
                                     onOpen = { app.openProductSlug = p.slug },
-                                    onAdd = { v?.let { app.setVariantQty(it.id, 1) } },
+                                    onAdd = {
+                                        if (p.variants.count { it.isActive } > 1) app.packSheetSlug = p.slug  // choose size first
+                                        else v?.let { app.setVariantQty(it.id, 1) }
+                                    },
                                     onQty = { q -> v?.let { app.setVariantQty(it.id, q) } },
                                 )
                             }
@@ -205,6 +206,8 @@ fun ShopTab(app: AppController, actions: PhoneActions) {
                     },
                 )
 
+                ReportEntryCard(lang = lang, pending = app.pendingReports) { actions.onReportProblem("home", "") }
+
                 // Quiet trust line instead of marketing blocks
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
                     listOf(
@@ -215,300 +218,6 @@ fun ShopTab(app: AppController, actions: PhoneActions) {
                 }
                 Spacer(Modifier.height(80.dp))  // room for the floating cart bar
             }
-        }
-    }
-}
-
-@Composable
-private fun TrustTile(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    title: String,
-    sub: String,
-    modifier: Modifier = Modifier,
-) {
-    Row(
-        modifier
-            .clip(RoundedCornerShape(16.dp))
-            .background(CardBg)
-            .border(1.dp, PaperLine, RoundedCornerShape(16.dp))
-            .padding(12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Box(
-            Modifier.size(38.dp).clip(RoundedCornerShape(11.dp)).background(Paper2),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(icon, contentDescription = null, tint = AccentGreen, modifier = Modifier.size(20.dp))
-        }
-        Spacer(Modifier.width(10.dp))
-        Column {
-            Text(title, style = MaterialTheme.typography.titleMedium.copy(fontSize = 14.sp), maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(sub, style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp), color = Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        }
-    }
-}
-
-@Composable
-private fun FilterChipPill(label: String, selected: Boolean, onClick: () -> Unit) {
-    Box(
-        Modifier
-            .clip(RoundedCornerShape(50))
-            .background(if (selected) Leaf else CardBg)
-            .border(1.5.dp, if (selected) Leaf else PaperLine, RoundedCornerShape(50))
-            .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 9.dp),
-    ) {
-        Text(
-            text = label,
-            color = if (selected) Color.White else TextMain,
-            style = MaterialTheme.typography.labelLarge.copy(fontSize = 13.sp),
-        )
-    }
-}
-
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun OrganicProductCard(
-    product: Product,
-    lang: String,
-    cartQuantities: Map<Int, Int>,
-    onUpdateQty: (Int, Int) -> Unit,
-    onOpenDetail: () -> Unit,
-) {
-    var selectedVariantIdx by remember(product.id) { mutableIntStateOf(product.variants.indexOfFirst { it.inStock }.coerceAtLeast(0)) }
-    val selectedVariant = product.variants.getOrElse(selectedVariantIdx) { product.variants.first() }
-    val maxAllowed = minOf(10, selectedVariant.stock).coerceAtLeast(0)
-    val currentCartQty = cartQuantities[selectedVariant.id] ?: 0
-    var addStepQty by remember(selectedVariant.id) { mutableIntStateOf(1) }
-
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(22.dp))
-            .background(CardBg)
-            .border(1.dp, PaperLine, RoundedCornerShape(22.dp)),
-    ) {
-        // Media Header
-        Box(
-            Modifier
-                .fillMaxWidth()
-                .background(
-                    Brush.radialGradient(
-                        listOf(
-                            Color(0xFFFFF4DA),
-                            Color(0xFFF4F8EE),
-                            Color(0xFFE6EFE3),
-                        )
-                    )
-                )
-                .clickable(onClick = onOpenDetail)
-                .padding(16.dp),
-            contentAlignment = Alignment.Center,
-        ) {
-            ProductImage(
-                product = product,
-                contentScale = ContentScale.Fit,
-                modifier = Modifier.height(190.dp).fillMaxWidth(),
-            )
-
-            // Top-left Featured & Kind Badges
-            Row(
-                Modifier.align(Alignment.TopStart),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
-                if (product.isFeatured) {
-                    Box(
-                        Modifier
-                            .clip(RoundedCornerShape(50))
-                            .background(Forest)
-                            .padding(horizontal = 10.dp, vertical = 4.dp)
-                    ) {
-                        Text(t("Featured"), color = Color.White, style = MaterialTheme.typography.labelMedium)
-                    }
-                }
-                OrganicBadge(
-                    text = if (product.kind == "pesticide") t("Organic Bio-Pesticide") else t("Organic Fertilizer"),
-                    isPesticide = product.kind == "pesticide",
-                )
-            }
-
-            // Top-right 100% Chemical-Free stamp
-            Box(
-                Modifier
-                    .align(Alignment.TopEnd)
-                    .clip(RoundedCornerShape(50))
-                    .background(Color.White.copy(alpha = 0.9f))
-                    .border(1.dp, Leaf, RoundedCornerShape(50))
-                    .padding(horizontal = 9.dp, vertical = 4.dp)
-            ) {
-                Text(
-                    text = if (lang == "bn") "🌿 ১০০% জৈব" else "🌿 Zero Chemical",
-                    color = Forest,
-                    style = MaterialTheme.typography.labelMedium.copy(fontSize = 11.sp),
-                )
-            }
-        }
-
-        // Body
-        Column(
-            Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            Text(
-                text = product.localizedName(lang),
-                style = MaterialTheme.typography.titleLarge,
-                color = TextMain,
-                modifier = Modifier.clickable(onClick = onOpenDetail),
-            )
-            Text(
-                text = product.localizedShort(lang),
-                style = MaterialTheme.typography.bodyMedium,
-                color = Muted,
-            )
-
-            // Pack Size Selector Chips
-            Text(
-                text = t("Choose pack size"),
-                style = MaterialTheme.typography.labelMedium,
-                color = Muted,
-            )
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                product.variants.forEachIndexed { idx, v ->
-                    val isSelected = idx == selectedVariantIdx
-                    val vQtyInCart = cartQuantities[v.id] ?: 0
-                    Column(
-                        Modifier
-                            .clip(RoundedCornerShape(14.dp))
-                            .background(if (isSelected) MintSoft else CardBg)
-                            .border(
-                                width = if (isSelected) 2.dp else 1.5.dp,
-                                color = if (isSelected) Leaf else PaperLine,
-                                shape = RoundedCornerShape(14.dp),
-                            )
-                            .clickable { selectedVariantIdx = idx }
-                            .padding(horizontal = 14.dp, vertical = 8.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                    ) {
-                        Text(
-                            text = v.localizedLabel(lang) + if (vQtyInCart > 0) " ($vQtyInCart)" else "",
-                            style = MaterialTheme.typography.labelLarge.copy(fontSize = 13.sp),
-                            color = if (isSelected) Forest else TextMain,
-                        )
-                        Text(
-                            text = formatRupees(v.price),
-                            style = MaterialTheme.typography.titleMedium,
-                            color = if (isSelected) Leaf else AccentGreen,
-                        )
-                    }
-                }
-            }
-
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text = "${t("Prices include GST")} (${selectedVariant.gstRate.toInt()}% GST · HSN ${selectedVariant.hsnCode})",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = Muted,
-                )
-                Text(
-                    text = when {
-                        selectedVariant.stock <= 0 -> if (lang == "bn") "স্টকে নেই" else "Out of stock"
-                        selectedVariant.stock < 10 -> if (lang == "bn") "মাত্র ${selectedVariant.stock} টি বাকি" else "Only ${selectedVariant.stock} left"
-                        else -> if (lang == "bn") "স্টকে আছে" else "In stock"
-                    },
-                    style = MaterialTheme.typography.labelMedium,
-                    color = if (selectedVariant.stock <= 0) Danger else AccentGreen,
-                )
-            }
-
-            // Add to Cart / Quantity Control Row
-            if (currentCartQty > 0) {
-                Row(
-                    Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Filled.CheckCircle, contentDescription = null, tint = AccentGreen, modifier = Modifier.size(20.dp))
-                        Spacer(Modifier.width(6.dp))
-                        Text(
-                            text = "${t("In Cart")}: $currentCartQty × ${selectedVariant.localizedLabel(lang)}",
-                            style = MaterialTheme.typography.titleMedium,
-                            color = AccentGreen,
-                        )
-                    }
-                    QuantityStepper(
-                        qty = currentCartQty,
-                        maxQty = maxOf(maxAllowed, currentCartQty),
-                        onChange = { newQ -> onUpdateQty(selectedVariant.id, newQ) },
-                    )
-                }
-            } else if (maxAllowed <= 0) {
-                BigButton(text = if (lang == "bn") "স্টকে নেই" else "Out of stock", enabled = false, onClick = {})
-            } else {
-                Row(
-                    Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                ) {
-                    QuantityStepper(
-                        qty = addStepQty,
-                        maxQty = maxAllowed,
-                        onChange = { if (it >= 1) addStepQty = it },
-                    )
-                    BigButton(
-                        text = "🛒 ${t("Add to Cart")} · ${formatRupees(selectedVariant.price * addStepQty)}",
-                        modifier = Modifier.weight(1f),
-                        onClick = { onUpdateQty(selectedVariant.id, addStepQty) },
-                    )
-                }
-            }
-
-            // View Detail & Crop Dosage Calculator link
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(Paper2)
-                    .clickable(onClick = onOpenDetail)
-                    .padding(horizontal = 12.dp, vertical = 9.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween,
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Filled.Calculate, contentDescription = null, tint = AccentGreen, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(8.dp))
-                    Text(
-                        text = t("View Details & Crop Dose Calculator"),
-                        style = MaterialTheme.typography.labelMedium,
-                        color = TextMain,
-                    )
-                }
-                Text("→", color = AccentGreen, fontWeight = FontWeight.Bold)
-            }
-        }
-    }
-}
-
-@Composable
-private fun HowItWorksStep(num: String, title: String, desc: String) {
-    Row(verticalAlignment = Alignment.Top) {
-        Box(
-            Modifier.size(34.dp).clip(CircleShape).background(Forest),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(num, color = SunGold, style = MaterialTheme.typography.titleMedium)
-        }
-        Spacer(Modifier.width(12.dp))
-        Column(Modifier.weight(1f)) {
-            Text(title, style = MaterialTheme.typography.titleMedium)
-            Text(desc, style = MaterialTheme.typography.bodySmall, color = Muted)
         }
     }
 }
@@ -532,12 +241,13 @@ fun ProductDetailScreen(
     var selectedCropIdx by remember(product.id) { mutableIntStateOf(0) }
     var areaOrTreesInput by remember(product.id) { mutableStateOf("2") }
 
+    Box(Modifier.fillMaxSize()) {
     Column(
         Modifier
             .fillMaxSize()
             .background(Paper)
             .verticalScroll(rememberScrollState())
-            .padding(16.dp),
+            .padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 110.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         // Top Back Button
@@ -761,5 +471,15 @@ fun ProductDetailScreen(
         )
 
         Spacer(Modifier.height(24.dp))
+    }
+    WishHeart(on = product.id in app.wishlist, modifier = Modifier.align(Alignment.TopEnd).padding(16.dp)) { app.toggleWish(product.id) }
+    StickyBuyBar(
+        v = selectedVariant,
+        inCart = currentCartQty,
+        lang = lang,
+        onAdd = { app.setVariantQty(selectedVariant.id, 1) },
+        onGoToBag = { app.openProductSlug = null; app.tab = Tab.Cart },
+        modifier = Modifier.align(Alignment.BottomCenter),
+    )
     }
 }

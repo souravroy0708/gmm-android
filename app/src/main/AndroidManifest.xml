@@ -12,6 +12,11 @@
         <intent>
             <action android:name="android.intent.action.DIAL" />
         </intent>
+        <!-- Email the developer from Profile -->
+        <intent>
+            <action android:name="android.intent.action.SENDTO" />
+            <data android:scheme="mailto" />
+        </intent>
         <!-- "Send order by SMS" works without mobile data -->
         <intent>
             <action android:name="android.intent.action.SENDTO" />

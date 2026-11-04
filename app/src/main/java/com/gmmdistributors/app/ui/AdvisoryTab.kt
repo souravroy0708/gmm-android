@@ -55,7 +55,6 @@ import androidx.compose.ui.unit.sp
 import com.gmmdistributors.app.AppController
 import com.gmmdistributors.app.AdvisoryContent
 import com.gmmdistributors.app.Tab
-import com.gmmdistributors.app.ThoughtCard
 import java.time.LocalDate
 
 private val MONTHS_BN = listOf("জানু", "ফেব্রু", "মার্চ", "এপ্রিল", "মে", "জুন", "জুলাই", "আগস্ট", "সেপ্টে", "অক্টো", "নভে", "ডিসে")
@@ -100,6 +99,9 @@ fun AdvisoryTab(app: AppController, actions: PhoneActions) {
             )
         }
 
+        // Advice written by GMM staff in the admin (updates with the catalogue, readable offline)
+        KrishiTipsSection(app.tips, app)
+
         // 2. Daily Organic Tip Card
         Column(
             Modifier
@@ -116,41 +118,6 @@ fun AdvisoryTab(app: AppController, actions: PhoneActions) {
                 color = WarnInk,
             )
             Text(dailyTip, style = MaterialTheme.typography.bodyMedium, color = Color(0xFF3A2A05))
-        }
-
-        // 3. Thought Card Maker Promo Banner
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(20.dp))
-                .background(CardBg)
-                .border(1.5.dp, SunGold, RoundedCornerShape(20.dp))
-                .clickable { app.thoughtCardOpen = true }
-                .padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Box(
-                Modifier.size(48.dp).clip(CircleShape).background(SunGold),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(Icons.Filled.FormatQuote, contentDescription = null, tint = SunInk, modifier = Modifier.size(26.dp))
-            }
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
-                Text(
-                    text = if (lang == "bn") "আপনার ভাবনা, GMM কার্ডে" else "Create Your GMM Organic Thought Card",
-                    style = MaterialTheme.typography.titleMedium,
-                )
-                Text(
-                    text = if (lang == "bn") "জৈব চাষের বার্তা ও আপনার নাম দিয়ে পোস্টার বানিয়ে হোয়াটসঅ্যাপে শেয়ার করুন"
-                    else "Write a farming thought, generate a branded poster & share on WhatsApp",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = Muted,
-                )
-            }
-            SmallPill(if (lang == "bn") "বানান →" else "Create →", gold = true) {
-                app.thoughtCardOpen = true
-            }
         }
 
         // 4. Crop Guides List
@@ -464,129 +431,3 @@ private fun FactMiniCard(label: String, value: String, modifier: Modifier = Modi
     }
 }
 
-/**
- * Native Jetpack Compose screen for GMM's Thought Card Maker (`apps/thoughts`),
- * rendering a live Bitmap preview with `ThoughtCard.render(...)` and sharing via WhatsApp/FileProvider.
- */
-@Composable
-fun ThoughtCardScreen(
-    app: AppController,
-    actions: PhoneActions,
-    onBack: () -> Unit,
-) {
-    val ctx = LocalContext.current
-    val lang = app.language
-    var quote by rememberSaveable {
-        mutableStateOf("মাটি বাঁচলে বাঁচবে চাষ, জৈব সারেই মিটবে আশ। রাসায়নিকমুক্ত চাষাবাদই আমাদের অঙ্গীকার।")
-    }
-    var authorName by rememberSaveable { mutableStateOf(app.prefs.customerName.ifBlank { "চিকুর কুমার রায়" }) }
-    var location by rememberSaveable { mutableStateOf(app.prefs.villageTown.ifBlank { "আরামবাগ, হুগলি" }) }
-    var template by rememberSaveable { mutableStateOf(ThoughtCard.Template.FOREST) }
-
-    val previewBitmap = remember(quote, authorName, location, template) {
-        ThoughtCard.render(ctx, quote, authorName, location, template)
-    }
-
-    Column(
-        Modifier
-            .fillMaxSize()
-            .background(Paper)
-            .imePadding()
-            .verticalScroll(rememberScrollState())
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
-    ) {
-        Row(
-            Modifier
-                .clip(RoundedCornerShape(50))
-                .background(CardBg)
-                .border(1.dp, PaperLine, RoundedCornerShape(50))
-                .clickable(onClick = onBack)
-                .padding(horizontal = 14.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(Icons.Filled.ArrowBack, contentDescription = "Back", tint = AccentGreen, modifier = Modifier.size(18.dp))
-            Spacer(Modifier.width(6.dp))
-            Text(if (lang == "bn") "কৃষি পরামর্শে ফিরে যান" else "Back", style = MaterialTheme.typography.labelLarge)
-        }
-
-        AppCard(title = t("Make a GMM Thought Card")) {
-            // Template picker
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                ThoughtCard.Template.entries.forEach { tpl ->
-                    val on = tpl == template
-                    Box(
-                        Modifier
-                            .weight(1f)
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(if (on) Leaf else Paper)
-                            .border(1.dp, if (on) Leaf else PaperLine, RoundedCornerShape(12.dp))
-                            .clickable { template = tpl }
-                            .padding(vertical = 8.dp),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text(
-                            text = if (lang == "bn") tpl.labelBn else tpl.labelEn,
-                            color = if (on) Color.White else TextMain,
-                            style = MaterialTheme.typography.labelMedium,
-                        )
-                    }
-                }
-            }
-
-            AppField(
-                label = if (lang == "bn") "আপনার ভাবনা বা জৈব চাষের বার্তা" else "Your Organic Farming Thought",
-                value = quote,
-                onChange = { quote = it.take(260) },
-                singleLine = false,
-            )
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                AppField(
-                    label = if (lang == "bn") "আপনার নাম" else "Your Name",
-                    value = authorName,
-                    onChange = { authorName = it.take(50) },
-                    modifier = Modifier.weight(1f),
-                )
-                AppField(
-                    label = if (lang == "bn") "স্থান / গ্রাম" else "Village / Town",
-                    value = location,
-                    onChange = { location = it.take(50) },
-                    modifier = Modifier.weight(1f),
-                )
-            }
-
-            // Live Rendered Poster Preview
-            Box(
-                Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(18.dp))
-                    .background(Paper2)
-                    .padding(10.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                Image(
-                    bitmap = previewBitmap.asImageBitmap(),
-                    contentDescription = "GMM Thought Card Preview",
-                    contentScale = ContentScale.Fit,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .aspectRatio(1080f / 1350f)
-                        .clip(RoundedCornerShape(12.dp)),
-                )
-            }
-
-            BigButton(
-                text = if (lang == "bn") "📤 হোয়াটসঅ্যাপ ও সোশ্যাল মিডিয়ায় শেয়ার করুন" else "📤 Share Poster on WhatsApp / Social Media",
-                whatsapp = true,
-                onClick = {
-                    actions.onShareImage(
-                        previewBitmap,
-                        "🌿 GMM Distributors Pvt. Ltd. · 100% Organic Farming, Healthy Living"
-                    )
-                },
-            )
-        }
-
-        Spacer(Modifier.height(24.dp))
-    }
-}

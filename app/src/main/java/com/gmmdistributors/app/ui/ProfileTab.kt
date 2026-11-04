@@ -40,6 +40,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -263,7 +264,72 @@ fun ProfileTab(app: AppController, actions: PhoneActions) {
             )
         }
 
+        ReportEntryCard(lang = lang, pending = app.pendingReports) { actions.onReportProblem("profile", "") }
+
+        DeveloperCreditCard(lang = lang, onEmail = { actions.onEmail(DEVELOPER_EMAIL, "GMM Organic app v${com.gmmdistributors.app.BuildConfig.VERSION_NAME}") })
+
         Spacer(Modifier.height(24.dp))
+    }
+}
+
+const val DEVELOPER_NAME = "Sourav"
+const val DEVELOPER_EMAIL = "tosourav6@gmail.com"
+
+/** Highlighted maker's credit: gold-ringed monogram, name, role, version and a one-tap email button. */
+@Composable
+fun DeveloperCreditCard(lang: String, onEmail: () -> Unit) {
+    val bn = lang == "bn"
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(24.dp))
+            .background(androidx.compose.ui.graphics.Brush.linearGradient(listOf(Forest, Color(0xFF1B5A34))))
+            .border(1.5.dp, SunGold.copy(alpha = 0.55f), RoundedCornerShape(24.dp))
+            .padding(18.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                Modifier.size(56.dp).clip(CircleShape)
+                    .background(androidx.compose.ui.graphics.Brush.linearGradient(listOf(SunGold, Color(0xFFE0701A))))
+                    .border(2.dp, Color.White.copy(alpha = 0.85f), CircleShape),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text("S", style = MaterialTheme.typography.headlineMedium, color = SunInk, fontWeight = FontWeight.ExtraBold)
+            }
+            Spacer(Modifier.width(14.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    if (bn) "অ্যাপ ডিজাইন ও ডেভেলপমেন্ট" else "DESIGNED & DEVELOPED BY",
+                    style = MaterialTheme.typography.labelMedium, color = SunGold, letterSpacing = 1.2.sp,
+                )
+                Text(DEVELOPER_NAME, style = MaterialTheme.typography.headlineMedium, color = Color.White, fontWeight = FontWeight.ExtraBold)
+                Text(
+                    if (bn) "অ্যান্ড্রয়েড অ্যাপ · ওয়েবসাইট · সার্ভার" else "Android app · Website · Server",
+                    style = MaterialTheme.typography.bodySmall, color = MutedOnDark,
+                )
+            }
+        }
+        Row(
+            Modifier.fillMaxWidth().height(52.dp).clip(RoundedCornerShape(14.dp)).background(Color.White.copy(alpha = 0.12f))
+                .border(1.dp, Color.White.copy(alpha = 0.18f), RoundedCornerShape(14.dp))
+                .clickable(onClick = onEmail).padding(horizontal = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("✉️", style = MaterialTheme.typography.titleMedium)
+            Spacer(Modifier.width(10.dp))
+            Column(Modifier.weight(1f)) {
+                Text(DEVELOPER_EMAIL, style = MaterialTheme.typography.titleMedium, color = Color.White, maxLines = 1)
+                Text(if (bn) "মতামত বা সমস্যা জানাতে ইমেল করুন" else "Email for feedback or to report a problem",
+                    style = MaterialTheme.typography.bodySmall, color = MutedOnDark, maxLines = 1)
+            }
+            Text("→", style = MaterialTheme.typography.titleLarge, color = SunGold)
+        }
+        Text(
+            "GMM Organic v${com.gmmdistributors.app.BuildConfig.VERSION_NAME} · © 2026 GMM Distributors Pvt. Ltd.",
+            style = MaterialTheme.typography.bodySmall, color = MutedOnDark.copy(alpha = 0.8f),
+            modifier = Modifier.fillMaxWidth(), textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+        )
     }
 }
 

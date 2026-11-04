@@ -581,59 +581,6 @@ fun AddressFormScreen(
     }
 }
 
-/** Shown right after an order is saved on the server: what happens next, plus an optional WhatsApp note. */
-@Composable
-fun WhatsAppOrderPromptDialog(
-    order: Order,
-    lang: String,
-    onSendWhatsApp: () -> Unit,
-    onDismiss: () -> Unit,
-) {
-    val bn = lang == "bn"
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Filled.CheckCircle, contentDescription = null, tint = Leaf, modifier = Modifier.size(28.dp))
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    text = if (bn) "অর্ডার হয়েছে: ${order.orderNo}" else "Order placed: ${order.orderNo}",
-                    style = MaterialTheme.typography.titleLarge,
-                )
-            }
-        },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(
-                    text = when (order.paymentMethod) {
-                        "COD" -> if (bn) "আপনার অর্ডার আমাদের কাছে পৌঁছেছে। আমরা নিশ্চিত করে পাঠিয়ে দেব; পণ্য হাতে পেয়ে নগদ দেবেন।"
-                            else "We have received your order. We will confirm and send it; pay in cash on delivery."
-                        else -> if (bn) "পরের ধাপ: অর্ডারের পাতায় \"UPI দিয়ে পেমেন্ট\" বা ব্যাংকের তথ্য দেখে ${formatRupees(order.total)} পাঠান, তারপর UTR নম্বর দিন। পেমেন্ট যাচাই হলে অর্ডার পাঠানো হবে।"
-                            else "Next: on the order page, pay ${formatRupees(order.total)} by UPI or bank transfer, then enter the UTR number. We dispatch once the payment is verified."
-                    },
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-                Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(MintSoft).padding(10.dp)) {
-                    Text(
-                        text = "${order.items.sumOf { it.quantity }} ${if (bn) "প্যাক" else "packs"} · ${formatRupees(order.total)} · ${order.paymentMethodLabel(lang)}",
-                        style = MaterialTheme.typography.labelLarge,
-                        color = Forest,
-                    )
-                }
-            }
-        },
-        confirmButton = {
-            BigButton(text = if (bn) "অর্ডার ও পেমেন্ট দেখুন" else "View order & pay", onClick = onDismiss)
-        },
-        dismissButton = {
-            TextButton(onClick = onSendWhatsApp) {
-                Text(if (bn) "💬 হোয়াটসঅ্যাপেও জানান" else "💬 Also tell us on WhatsApp", color = WhatsAppGreen)
-            }
-        },
-    )
-}
-
-
 /** Guest checkout: name, mobile and address typed once, remembered on this phone. No password. */
 @Composable
 fun GuestDetailsCard(app: AppController) {

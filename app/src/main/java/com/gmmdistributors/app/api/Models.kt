@@ -139,8 +139,11 @@ data class ProductVariant(
     val hsnCode: String,
     val stock: Int,
     val isActive: Boolean = true,
+    /** Printed MRP from the admin (only sent when higher than the price). */
+    val mrp: Double? = null,
 ) {
     val inStock: Boolean get() = isActive && stock > 0
+    val discountPct: Int get() = mrp?.let { if (it > price) (((it - price) / it) * 100).toInt() else 0 } ?: 0
     fun localizedLabel(lang: String): String = if (lang == "bn" && labelBn.isNotBlank()) labelBn else label
 
     fun toJson(): JSONObject = JSONObject()
@@ -154,6 +157,7 @@ data class ProductVariant(
         .put("gst_rate", gstRate)
         .put("hsn_code", hsnCode)
         .put("stock", stock)
+        .put("mrp", mrp ?: JSONObject.NULL)
         .put("is_active", isActive)
 
     companion object {
@@ -168,6 +172,7 @@ data class ProductVariant(
             gstRate = j.optDouble("gst_rate", 5.0),
             hsnCode = j.optString("hsn_code", "3101"),
             stock = j.optInt("stock", 0),
+            mrp = j.optNullableDouble("mrp"),
             isActive = j.optBoolean("is_active", true),
         )
     }
@@ -709,6 +714,8 @@ data class CatalogPayload(
     val products: List<Product>,
     val pins: List<ServiceablePin>,
     val version: String = "",
+    val banners: List<Banner> = emptyList(),
+    val tips: List<KrishiTip> = emptyList(),
 ) {
     fun toJson(): JSONObject = JSONObject()
         .put("site", config.toJson())
@@ -716,6 +723,8 @@ data class CatalogPayload(
         .put("products", JSONArray(products.map { it.toJson() }))
         .put("serviceable_pins", JSONArray(pins.map { it.toJson() }))
         .put("version", version)
+        .put("banners", JSONArray(banners.map { it.toJson() }))
+        .put("tips", JSONArray(tips.map { it.toJson() }))
 
     companion object {
         fun from(j: JSONObject) = CatalogPayload(
@@ -724,6 +733,64 @@ data class CatalogPayload(
             products = j.optJSONArray("products").mapObjects { Product.from(it) },
             pins = j.optJSONArray("serviceable_pins").mapObjects { ServiceablePin.from(it) },
             version = j.optString("version"),
+            banners = j.optJSONArray("banners").mapObjects { Banner.from(it) },
+            tips = j.optJSONArray("tips").mapObjects { KrishiTip.from(it) },
         )
+    }
+}
+
+
+/** Home carousel banner, managed in Admin > Home banners. */
+data class Banner(
+    val id: Int, val title: String, val titleBn: String, val subtitle: String, val subtitleBn: String,
+    val button: String, val buttonBn: String, val theme: String, val imageUrl: String, val linkKind: String, val linkValue: String,
+) {
+    fun t(lang: String) = if (lang == "bn" && titleBn.isNotBlank()) titleBn else title
+    fun sub(lang: String) = if (lang == "bn" && subtitleBn.isNotBlank()) subtitleBn else subtitle
+    fun btn(lang: String) = if (lang == "bn" && buttonBn.isNotBlank()) buttonBn else button
+
+    fun toJson(): JSONObject = JSONObject().put("id", id).put("title", title).put("title_bn", titleBn).put("subtitle", subtitle)
+        .put("subtitle_bn", subtitleBn).put("button", button).put("button_bn", buttonBn).put("theme", theme)
+        .put("image_url", imageUrl).put("link_kind", linkKind).put("link_value", linkValue)
+
+    companion object {
+        fun from(j: JSONObject) = Banner(
+            j.optInt("id"), j.optString("title"), j.optString("title_bn"), j.optString("subtitle"), j.optString("subtitle_bn"),
+            j.optString("button"), j.optString("button_bn"), j.optString("theme", "forest"), j.optString("image_url"),
+            j.optString("link_kind"), j.optString("link_value"),
+        )
+    }
+}
+
+
+/** Farming advice written by GMM staff in the admin (Krishi tips). */
+data class KrishiTip(val id: Int, val title: String, val titleBn: String, val body: String, val bodyBn: String,
+                     val crop: String, val imageUrl: String, val productSlug: String, val pinned: Boolean, val date: String) {
+    fun t(lang: String) = if (lang == "bn" && titleBn.isNotBlank()) titleBn else title
+    fun b(lang: String) = if (lang == "bn" && bodyBn.isNotBlank()) bodyBn else body
+
+    fun toJson(): JSONObject = JSONObject().put("id", id).put("title", title).put("title_bn", titleBn).put("body", body)
+        .put("body_bn", bodyBn).put("crop", crop).put("image_url", imageUrl).put("product_slug", productSlug)
+        .put("pinned", pinned).put("date", date)
+
+    companion object {
+        fun from(j: JSONObject) = KrishiTip(j.optInt("id"), j.optString("title"), j.optString("title_bn"), j.optString("body"),
+            j.optString("body_bn"), j.optString("crop"), j.optString("image_url"), j.optString("product_slug"),
+            j.optBoolean("pinned"), j.optString("date"))
+    }
+}
+
+/** A problem report waiting on the phone until there is internet. The screenshot is a JPEG file on the phone. */
+data class PendingFeedback(
+    val key: String, val createdAt: Long, val kind: String, val message: String, val name: String, val phone: String,
+    val orderNo: String, val screen: String, val imagePath: String,
+) {
+    fun toJson(): JSONObject = JSONObject().put("key", key).put("created_at", createdAt).put("kind", kind).put("message", message)
+        .put("name", name).put("phone", phone).put("order_no", orderNo).put("screen", screen).put("image_path", imagePath)
+
+    companion object {
+        fun from(j: JSONObject) = PendingFeedback(j.optString("key"), j.optLong("created_at"), j.optString("kind", "other"),
+            j.optString("message"), j.optString("name"), j.optString("phone"), j.optString("order_no"), j.optString("screen"),
+            j.optString("image_path"))
     }
 }

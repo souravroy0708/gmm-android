@@ -377,6 +377,10 @@ fun OrderDetailScreen(
         if (order.canCancel) {
             GhostButton(text = t("Cancel Order"), danger = true, onClick = { confirmCancel = true })
         }
+        GhostButton(
+            text = if (bn) "🛟 এই অর্ডারে সমস্যা? জানান" else "🛟 Problem with this order? Tell us",
+            onClick = { actions.onReportProblem("order_detail", order.orderNo) },
+        )
         Spacer(Modifier.height(24.dp))
     }
 

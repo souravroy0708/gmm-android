@@ -334,6 +334,44 @@ class Repo(context: Context) {
         return fail(r, lang, "Invoice not available yet.")
     }
 
+    // ---------- problem reports (offline queue) ----------
+
+    suspend fun queueFeedback(f: PendingFeedback) = withContext(Dispatchers.IO) { db.savePendingFeedback(f) }
+
+    suspend fun pendingFeedbackCount(): Int = withContext(Dispatchers.IO) { db.pendingFeedback().size }
+
+    /** Sends saved reports (screenshot as base64 JPEG). Network drop -> stop and retry later. Returns (sent, stillWaiting). */
+    suspend fun flushFeedback(lang: String): Pair<Int, Int> {
+        val queue = withContext(Dispatchers.IO) { db.pendingFeedback() }
+        if (queue.isEmpty()) return 0 to 0
+        if (!signedIn) ensureSession(lang)  // optional: links the report to this phone's (guest) account
+        var sent = 0
+        for ((i, f) in queue.withIndex()) {
+            val shot = withContext(Dispatchers.IO) {
+                f.imagePath.takeIf { it.isNotBlank() }?.let { java.io.File(it) }?.takeIf { it.exists() && it.length() < 1_100_000 }
+                    ?.let { android.util.Base64.encodeToString(it.readBytes(), android.util.Base64.NO_WRAP) }
+            }
+            val body = JSONObject().put("kind", f.kind).put("message", f.message).put("name", f.name).put("phone", f.phone)
+                .put("order_no", f.orderNo).put("screen", f.screen).put("client_key", f.key).put("written_at", f.createdAt)
+                .put("app_version", appVersion()).put("device", deviceName())
+            if (shot != null) body.put("screenshot", shot)
+            val r = api.post("feedback/", body)
+            when {
+                r.offline -> return sent to (queue.size - i)
+                r.ok || (r.code != null && r.code in 400..499 && r.code != 429) -> {
+                    // sent, or rejected for good (e.g. bad picture): do not retry forever
+                    withContext(Dispatchers.IO) {
+                        db.deletePendingFeedback(f.key)
+                        if (f.imagePath.isNotBlank()) java.io.File(f.imagePath).delete()
+                    }
+                    if (r.ok) sent++
+                }
+                else -> return sent to (queue.size - i)
+            }
+        }
+        return sent to 0
+    }
+
     private fun deviceName(): String = "${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}".take(80)
     private fun appVersion(): String = com.gmmdistributors.app.BuildConfig.VERSION_NAME
 }

@@ -60,6 +60,22 @@ class AppController(private val ctx: Context, private val scope: CoroutineScope)
     var categories by mutableStateOf<List<Category>>(emptyList())
     var products by mutableStateOf<List<Product>>(emptyList())
     var pins by mutableStateOf<List<ServiceablePin>>(emptyList())
+    var banners by mutableStateOf<List<com.gmmdistributors.app.api.Banner>>(emptyList())
+    var tips by mutableStateOf<List<com.gmmdistributors.app.api.KrishiTip>>(emptyList())
+
+    // "Report a problem" (screenshot captured by MainActivity before the form opens)
+    var reportOpen by mutableStateOf(false)
+    var reportShot by mutableStateOf<String?>(null)
+    var reportScreen by mutableStateOf("")
+    var reportOrderNo by mutableStateOf("")
+    var pendingReports by mutableStateOf(0)
+
+    // Wishlist (product ids), kept on the phone so it works offline and without sign-in
+    var wishlist by mutableStateOf<Set<Int>>(emptySet())
+    // Increments on every add-to-cart: the bottom-bar cart badge bounces
+    var cartBump by mutableStateOf(0)
+    // Pack picker bottom sheet (product with several pack sizes)
+    var packSheetSlug by mutableStateOf<String?>(null)
     var catalogLoaded by mutableStateOf(false)
 
     // Shop filters & active product
@@ -69,7 +85,6 @@ class AppController(private val ctx: Context, private val scope: CoroutineScope)
 
     // Advisory & Thought Card
     var openCropSlug by mutableStateOf<String?>(null)
-    var thoughtCardOpen by mutableStateOf(false)
 
     // Cart & addresses
     var cartQuantities by mutableStateOf<Map<Int, Int>>(db.cartMap())
@@ -103,16 +118,24 @@ class AppController(private val ctx: Context, private val scope: CoroutineScope)
     var offline by mutableStateOf(false)
     var message by mutableStateOf<String?>(null)
 
-    val needsUpdate: Boolean get() = siteConfig.androidMinVersion > BuildConfig.VERSION_CODE
+    /** Set when Google Play reports a newer version and the customer backed out of the update screen. */
+    var playUpdateRequired by mutableStateOf(false)
+
+    /** Old versions are blocked: Play in-app update (every new release) or the server's minimum version. */
+    val needsUpdate: Boolean get() = playUpdateRequired || siteConfig.androidMinVersion > BuildConfig.VERSION_CODE
 
     init {
         launch {
             repo.cachedCatalog()?.let { applyCatalog(it) }  // SQLite snapshot, or the copy bundled in the APK
             pricesCheckedAt = repo.catalogCheckedAt()
+            wishlist = withContext(Dispatchers.IO) {
+                db.getCache("wishlist")?.split(",")?.mapNotNull { it.trim().toIntOrNull() }?.toSet() ?: emptySet()
+            }
             me = repo.cachedMe()
             guestAddress = repo.guestAddress()
             pendingOrders = repo.pendingOrders()
-            if (pendingOrders.any { it.status == "waiting" }) SyncWorker.schedule(ctx)
+            pendingReports = repo.pendingFeedbackCount()
+            if (pendingOrders.any { it.status == "waiting" } || pendingReports > 0) SyncWorker.schedule(ctx)
             if (repo.signedIn) {
                 addresses = repo.cachedAddresses()
                 orders = repo.cachedOrders()
@@ -133,6 +156,8 @@ class AppController(private val ctx: Context, private val scope: CoroutineScope)
         categories = c.categories
         products = c.products
         pins = c.pins
+        banners = c.banners
+        tips = c.tips
         catalogLoaded = true
     }
 
@@ -168,7 +193,7 @@ class AppController(private val ctx: Context, private val scope: CoroutineScope)
         offline = cat.offline
         if (!cat.offline) pricesCheckedAt = repo.catalogCheckedAt()
         if (cat.value == null) catalogLoaded = true  // stop the spinner; screen shows the offline message
-        if (!cat.offline) syncPendingNow()
+        if (!cat.offline) { syncPendingNow(); syncReportsNow() }
         if (repo.signedIn && !cat.offline) {
             when (val r = repo.refreshMe(language)) {
                 is Res.Ok -> me = r.value
@@ -310,7 +335,25 @@ class AppController(private val ctx: Context, private val scope: CoroutineScope)
         db.setCartQty(variantId, clamped)
         cartQuantities = db.cartMap()
         checkoutKey = UUID.randomUUID().toString()  // a changed cart is a new order attempt
-        if (clamped > current && message == null) message = say("Added to cart ✓", "কার্টে যোগ হয়েছে ✓")
+        if (clamped > current) {
+            cartBump += 1
+            if (message == null) message = say("Added to cart ✓", "কার্টে যোগ হয়েছে ✓")
+        }
+    }
+
+    fun toggleWish(productId: Int) {
+        wishlist = if (productId in wishlist) wishlist - productId else wishlist + productId
+        val save = wishlist.joinToString(",")
+        launch { withContext(Dispatchers.IO) { db.putCache("wishlist", save) } }
+        if (productId in wishlist) message = say("Saved to wishlist ♥", "পছন্দের তালিকায় রাখা হয়েছে ♥")
+    }
+
+    /** Banner tap: open a category or a product. */
+    fun openBanner(b: com.gmmdistributors.app.api.Banner) {
+        when (b.linkKind) {
+            "kind" -> { selectedCategorySlug = b.linkValue; searchQuery = "" }
+            "product" -> if (products.any { it.slug == b.linkValue }) openProductSlug = b.linkValue
+        }
     }
 
     fun clearCart() {
@@ -542,6 +585,46 @@ class AppController(private val ctx: Context, private val scope: CoroutineScope)
         if (r.stillWaiting > 0) SyncWorker.schedule(ctx)
     }
 
+    private suspend fun syncReportsNow() {
+        if (pendingReports == 0) pendingReports = repo.pendingFeedbackCount()
+        if (pendingReports == 0) return
+        val (sent, waiting) = repo.flushFeedback(language)
+        pendingReports = waiting
+        if (sent > 0) message = say("Your problem report has reached GMM ✓", "আপনার সমস্যার রিপোর্ট GMM-এর কাছে পৌঁছেছে ✓")
+        if (waiting > 0) SyncWorker.schedule(ctx)
+    }
+
+    /** Called by MainActivity after it captured the current screen (path may be null if capture failed). */
+    fun openReport(screen: String, orderNo: String = "", shotPath: String? = null) {
+        reportScreen = screen
+        reportOrderNo = orderNo
+        reportShot = shotPath
+        reportOpen = true
+    }
+
+    fun closeReport() {
+        reportShot?.let { runCatching { java.io.File(it).delete() } }
+        reportShot = null
+        reportOpen = false
+    }
+
+    /** Save the report on the phone first (never lost), then try to send it now. */
+    fun sendReport(kind: String, text: String, name: String, phone: String, keepShot: Boolean) = launch {
+        val shot = reportShot.takeIf { keepShot }
+        if (!keepShot) reportShot?.let { runCatching { java.io.File(it).delete() } }
+        val f = com.gmmdistributors.app.api.PendingFeedback(
+            key = "fb-" + UUID.randomUUID().toString(), createdAt = System.currentTimeMillis(), kind = kind,
+            message = text.trim().take(2000), name = name.trim().take(150), phone = phone.filter { it.isDigit() }.takeLast(10),
+            orderNo = reportOrderNo, screen = reportScreen, imagePath = shot ?: "",
+        )
+        repo.queueFeedback(f)
+        reportShot = null
+        reportOpen = false
+        pendingReports = repo.pendingFeedbackCount()
+        message = say("Thank you! Your report is saved and will reach GMM.", "ধন্যবাদ! আপনার রিপোর্ট সেভ হয়েছে, GMM-এর কাছে পৌঁছে যাবে।")
+        if (isOnline()) syncReportsNow() else SyncWorker.schedule(ctx)
+    }
+
     fun retryPending() = launch { syncPendingNow(includeFailed = true) }
 
     fun deletePending(key: String) = launch {
@@ -564,7 +647,7 @@ class AppController(private val ctx: Context, private val scope: CoroutineScope)
 
     /** Network came back (ConnectivityManager callback in MainActivity). */
     fun onNetworkAvailable() {
-        if (offline || pendingOrders.isNotEmpty()) refresh()
+        if (offline || pendingOrders.isNotEmpty() || pendingReports > 0) refresh()
     }
 
     /** Short order text for SMS (works without mobile data). */

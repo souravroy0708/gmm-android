@@ -18,7 +18,7 @@ import org.json.JSONObject
  * - `outbox`: offline actions waiting to sync when connected to live Django backend
  */
 class LocalDb private constructor(context: Context) :
-    SQLiteOpenHelper(context.applicationContext, "gmm_organic.db", null, 2) {
+    SQLiteOpenHelper(context.applicationContext, "gmm_organic.db", null, 3) {
 
     companion object {
         @Volatile private var instance: LocalDb? = null
@@ -69,6 +69,8 @@ class LocalDb private constructor(context: Context) :
         db.execSQL("CREATE TABLE IF NOT EXISTS cache (key TEXT PRIMARY KEY, body TEXT NOT NULL, fetched_at INTEGER NOT NULL)")
         // v2: orders made offline, sent by SyncWorker / on reconnect. key = server idempotency key.
         db.execSQL("CREATE TABLE IF NOT EXISTS pending_orders (key TEXT PRIMARY KEY, body TEXT NOT NULL, created_at INTEGER NOT NULL)")
+        // v3: problem reports written offline (screenshot kept as a file until sent)
+        db.execSQL("CREATE TABLE IF NOT EXISTS pending_feedback (key TEXT PRIMARY KEY, body TEXT NOT NULL, created_at INTEGER NOT NULL)")
         db.execSQL("CREATE TABLE IF NOT EXISTS outbox (id INTEGER PRIMARY KEY AUTOINCREMENT, path TEXT NOT NULL, body TEXT NOT NULL, created_at INTEGER NOT NULL)")
     }
 
@@ -245,6 +247,29 @@ class LocalDb private constructor(context: Context) :
         writableDatabase.delete("pending_orders", "key = ?", arrayOf(key))
     }
 
+    // ---------- Pending problem reports ----------
+
+    @Synchronized
+    fun savePendingFeedback(f: com.gmmdistributors.app.api.PendingFeedback) {
+        writableDatabase.insertWithOnConflict("pending_feedback", null,
+            ContentValues().apply { put("key", f.key); put("body", f.toJson().toString()); put("created_at", f.createdAt) },
+            SQLiteDatabase.CONFLICT_REPLACE)
+    }
+
+    @Synchronized
+    fun pendingFeedback(): List<com.gmmdistributors.app.api.PendingFeedback> {
+        val list = ArrayList<com.gmmdistributors.app.api.PendingFeedback>()
+        readableDatabase.rawQuery("SELECT body FROM pending_feedback ORDER BY created_at", null).use { c ->
+            while (c.moveToNext()) runCatching { com.gmmdistributors.app.api.PendingFeedback.from(JSONObject(c.getString(0))) }.getOrNull()?.let { list.add(it) }
+        }
+        return list
+    }
+
+    @Synchronized
+    fun deletePendingFeedback(key: String) {
+        writableDatabase.delete("pending_feedback", "key = ?", arrayOf(key))
+    }
+
     // ---------- Cache ----------
 
     @Synchronized
@@ -291,12 +316,12 @@ class LocalDb private constructor(context: Context) :
         writableDatabase.delete("orders", null, null)
         writableDatabase.delete("addresses", null, null)
         writableDatabase.delete("outbox", null, null)
-        writableDatabase.delete("cache", "key NOT IN (?, ?, ?)", arrayOf("catalog", "catalog_checked", "guest_address"))
+        writableDatabase.delete("cache", "key NOT IN (?, ?, ?, ?)", arrayOf("catalog", "catalog_checked", "guest_address", "wishlist"))
     }
 
     @Synchronized
     fun wipeAll() {
-        for (t in listOf("cart", "addresses", "orders", "cache", "outbox", "pending_orders")) {
+        for (t in listOf("cart", "addresses", "orders", "cache", "outbox", "pending_orders", "pending_feedback")) {
             writableDatabase.delete(t, null, null)
         }
     }

@@ -25,6 +25,8 @@ android {
         targetSdk = 36
         versionCode = buildNumber
         versionName = "1.0.$buildNumber"
+        // Ship only the languages the app speaks: drops ~80 unused translations from AndroidX libraries.
+        androidResources { localeFilters += listOf("en", "bn") }
         buildConfigField("String", "OWNER_WHATSAPP", "\"919083732101\"")
         buildConfigField("String", "SUPPORT_PHONE", "\"9083732101\"")
         buildConfigField("String", "SUPPORT_EMAIL", "\"ray.chikur@gmail.com\"")
@@ -59,6 +61,16 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
+    packaging {
+        resources {
+            excludes += listOf("/META-INF/{AL2.0,LGPL2.1}", "/META-INF/*.version", "DebugProbesKt.bin", "/kotlin/**", "/META-INF/*.kotlin_module")
+        }
+    }
+    bundle {
+        // Play delivers only the screen density and CPU each phone needs; keep all languages in the base
+        // so switching বাংলা / English inside the app always works.
+        language { enableSplit = false }
+    }
     lint {
         htmlReport = true
         xmlReport = false
@@ -82,10 +94,10 @@ dependencies {
     implementation(libs.compose.material.icons)
     implementation(libs.compose.material.icons.extended)
     implementation(libs.splashscreen)
-    implementation(libs.compose.ui.tooling.preview)
+    debugImplementation(libs.compose.ui.tooling.preview)
     implementation(libs.activity.compose)
-    implementation(libs.fragment.ktx)
     implementation(libs.lifecycle.runtime.ktx)
     implementation(libs.coroutines.android)
     implementation(libs.work.runtime.ktx)
+    implementation(libs.play.app.update.ktx)  // Google Play in-app updates (mandatory update)
 }

@@ -55,6 +55,11 @@ No payment details are hard-coded in the app.
 - Motion and feel: skeleton shimmer while loading, press-scale on product cards, haptic tick on
   add to cart, full-screen "Order placed" moment with one clear next step (Pay now / View order).
 
+## Mandatory updates
+Google Play in-app updates (IMMEDIATE) on every app open/resume, plus a server minimum version
+(Admin → Business settings → android min version). Offline the app keeps working; the update is enforced once online.
+See `GMM-PlayStore-Launch.md` for the full launch sheet.
+
 ## Release checklist (Play Store)
 
 1. Repository secrets for signing: `GMM_KEYSTORE_PATH`, `GMM_KEYSTORE_PASSWORD`, `GMM_KEY_ALIAS`, `GMM_KEY_PASSWORD`

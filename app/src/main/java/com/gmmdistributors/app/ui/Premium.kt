@@ -89,38 +89,6 @@ fun ProductArt(product: Product, modifier: Modifier = Modifier, contentScale: Co
     }
 }
 
-/** Big picture tile for the three shopping categories. */
-@Composable
-fun CategoryTile(
-    title: String,
-    subtitle: String,
-    kind: String,
-    selected: Boolean,
-    modifier: Modifier = Modifier,
-    onClick: () -> Unit,
-) {
-    val c = kindColor(kind)
-    Column(
-        modifier
-            .clip(RoundedCornerShape(20.dp))
-            .background(if (selected) c else CardBg)
-            .border(if (selected) 0.dp else 1.dp, if (selected) c else PaperLine, RoundedCornerShape(20.dp))
-            .clickable(role = Role.Tab, onClick = onClick)
-            .padding(vertical = 14.dp, horizontal = 8.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        Box(
-            Modifier.size(52.dp).clip(CircleShape).background(if (selected) Color.White.copy(alpha = 0.2f) else c.copy(alpha = 0.12f)),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(kindIcon(kind), contentDescription = null, tint = if (selected) Color.White else c, modifier = Modifier.size(30.dp))
-        }
-        Text(title, style = MaterialTheme.typography.titleMedium, color = if (selected) Color.White else TextMain, maxLines = 1)
-        Text(subtitle, style = MaterialTheme.typography.bodySmall, color = if (selected) Color.White.copy(alpha = 0.85f) else Muted, maxLines = 1)
-    }
-}
-
 @Composable
 fun SectionHeader(title: String, action: String? = null, onAction: () -> Unit = {}) {
     Row(Modifier.fillMaxWidth().padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -142,6 +110,8 @@ fun ProductGridCard(
     lang: String,
     qtyInCart: Int,
     modifier: Modifier = Modifier,
+    wished: Boolean = false,
+    onWish: () -> Unit = {},
     onOpen: () -> Unit,
     onAdd: () -> Unit,
     onQty: (Int) -> Unit,
@@ -166,6 +136,11 @@ fun ProductGridCard(
             ) {
                 Text(kindLabel(product.kind, lang), style = MaterialTheme.typography.labelMedium, color = Color.White)
             }
+            WishHeart(on = wished, modifier = Modifier.align(Alignment.TopEnd).padding(6.dp), onToggle = onWish)
+            if (v != null && v.discountPct > 0) {
+                Text("${v.discountPct}% OFF", style = MaterialTheme.typography.labelMedium, color = Color.White,
+                    modifier = Modifier.align(Alignment.BottomStart).padding(8.dp).clip(RoundedCornerShape(6.dp)).background(KindFood).padding(horizontal = 7.dp, vertical = 2.dp))
+            }
         }
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(product.localizedName(lang), style = MaterialTheme.typography.titleMedium, maxLines = 2,
@@ -176,7 +151,7 @@ fun ProductGridCard(
                     else v.localizedLabel(lang),
                     style = MaterialTheme.typography.bodySmall, color = Muted, maxLines = 1,
                 )
-                Text(formatRupees(v.price), style = MaterialTheme.typography.headlineMedium, color = AccentGreen)
+                PriceBlock(v)
                 Spacer(Modifier.height(2.dp))
                 when {
                     !v.inStock -> Box(

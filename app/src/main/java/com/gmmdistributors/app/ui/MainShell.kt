@@ -1,6 +1,5 @@
 package com.gmmdistributors.app.ui
 
-import android.graphics.Bitmap
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
@@ -51,6 +50,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -70,11 +70,14 @@ data class PhoneActions(
     val onPayUpi: (Order) -> Unit,
     val onShareInvoicePdf: (com.gmmdistributors.app.api.Invoice) -> Unit,
     val onSendEnquiryWhatsApp: (String) -> Unit,
-    val onShareTextWhatsApp: (String) -> Unit,
-    val onShareImage: (Bitmap, String) -> Unit,
     val onCallSupport: (String) -> Unit,
     val onCopyText: (String, String) -> Unit,
     val onSendSms: (String, String) -> Unit = { _, _ -> },
+    val onEmail: (String, String) -> Unit = { _, _ -> },
+    /** (screen name, order no): captures the current screen, then opens the report form. */
+    val onReportProblem: (String, String) -> Unit = { _, _ -> },
+    val onPickReportPhoto: () -> Unit = {},
+    val onUpdateApp: () -> Unit = {},
 )
 
 private data class NavTabItem(val tab: Tab, val label: String, val icon: ImageVector)
@@ -137,7 +140,7 @@ fun MainShell(app: AppController, actions: PhoneActions) {
                                 app.queuedOrder = null
                                 app.authOpen = false
                                 if (item.tab == Tab.Shop) app.openProductSlug = null
-                                if (item.tab == Tab.Advisory) { app.openCropSlug = null; app.thoughtCardOpen = false }
+                                if (item.tab == Tab.Advisory) { app.openCropSlug = null }
                                 if (item.tab == Tab.Orders) { app.openOrderNo = null; app.invoiceOrderNo = null }
                                 if (item.tab == Tab.Profile) { app.companyPage = null; app.addingAddress = false; app.editingAddress = null }
                                 app.tab = item.tab
@@ -146,7 +149,14 @@ fun MainShell(app: AppController, actions: PhoneActions) {
                                 if (item.tab == Tab.Cart && app.cartCount > 0) {
                                     BadgedBox(
                                         badge = {
-                                            Badge(containerColor = SunGold, contentColor = SunInk) {
+                                            val bump = remember { androidx.compose.animation.core.Animatable(1f) }
+                                            LaunchedEffect(app.cartBump) {
+                                                if (app.cartBump > 0) {
+                                                    bump.animateTo(1.45f, androidx.compose.animation.core.tween(120))
+                                                    bump.animateTo(1f, androidx.compose.animation.core.spring(dampingRatio = 0.4f))
+                                                }
+                                            }
+                                            Badge(containerColor = SunGold, contentColor = SunInk, modifier = Modifier.scale(bump.value)) {
                                                 Text(app.cartCount.toString(), fontWeight = FontWeight.Bold)
                                             }
                                         }
@@ -174,9 +184,15 @@ fun MainShell(app: AppController, actions: PhoneActions) {
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
     ) { padding ->
         PriceReviewDialog(app)
+        PackPickerSheet(app)
+        if (app.reportOpen) {
+            BackHandler { app.closeReport() }
+        }
         val placed = app.newlyPlacedOrder
         val queued = app.queuedOrder
-        if (queued != null) {
+        if (app.reportOpen) {
+            Box(Modifier.fillMaxSize().padding(padding)) { ReportProblemScreen(app, actions) }
+        } else if (queued != null) {
             BackHandler { app.queuedOrder = null }
             Box(Modifier.fillMaxSize().padding(padding)) {
                 QueuedOrderScreen(
@@ -205,7 +221,7 @@ fun MainShell(app: AppController, actions: PhoneActions) {
             }
         } else {
 
-        val screenKey = "${app.tab}:${app.openProductSlug}:${app.openCropSlug}:${app.thoughtCardOpen}:${app.openOrderNo}:${app.invoiceOrderNo}:${app.companyPage}:${app.addingAddress}"
+        val screenKey = "${app.tab}:${app.openProductSlug}:${app.openCropSlug}:${app.openOrderNo}:${app.invoiceOrderNo}:${app.companyPage}:${app.addingAddress}"
         AnimatedContent(
             targetState = screenKey,
             transitionSpec = {
@@ -217,9 +233,11 @@ fun MainShell(app: AppController, actions: PhoneActions) {
             Box(Modifier.fillMaxSize()) {
                 if (app.needsUpdate) {
                     StatusNotice(
-                        title = if (app.language == "bn") "অ্যাপ আপডেট করুন" else "Please update the app",
-                        body = if (app.language == "bn") "এই সংস্করণ আর চলে না। নতুন সংস্করণ ইনস্টল করুন।"
-                        else "This version of the GMM app is no longer supported. Please install the latest version.",
+                        title = if (app.language == "bn") "নতুন সংস্করণ এসেছে" else "A new version is ready",
+                        body = if (app.language == "bn") "অ্যাপটি চালাতে নতুন সংস্করণে আপডেট করুন। আপনার কার্ট ও অর্ডার ঠিক থাকবে।"
+                        else "Please update to keep using the GMM app. Your cart and orders stay safe.",
+                        button = if (app.language == "bn") "এখনই আপডেট করুন" else "Update now",
+                        onClick = { actions.onUpdateApp() },
                     )
                 } else if (app.products.isEmpty() && (app.tab == Tab.Shop || app.tab == Tab.Cart)) {
                     if (!app.catalogLoaded || app.refreshing) {
@@ -251,14 +269,6 @@ fun MainShell(app: AppController, actions: PhoneActions) {
 
                     Tab.Advisory -> {
                         when {
-                            app.thoughtCardOpen -> {
-                                BackHandler { app.thoughtCardOpen = false }
-                                ThoughtCardScreen(
-                                    app = app,
-                                    actions = actions,
-                                    onBack = { app.thoughtCardOpen = false },
-                                )
-                            }
                             app.openCropSlug != null -> {
                                 val guide = com.gmmdistributors.app.AdvisoryContent.CROP_GUIDES.firstOrNull { it.slug == app.openCropSlug }
                                 if (guide != null) {

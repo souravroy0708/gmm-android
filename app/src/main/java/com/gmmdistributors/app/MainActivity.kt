@@ -8,6 +8,12 @@ import android.graphics.Color
 import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
+import com.google.android.play.core.appupdate.AppUpdateManagerFactory
+import com.google.android.play.core.appupdate.AppUpdateOptions
+import com.google.android.play.core.install.model.AppUpdateType
+import com.google.android.play.core.install.model.UpdateAvailability
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -30,6 +36,58 @@ import java.io.File
  * - Clipboard copy for manual UPI ID / Bank Account / Order Summary
  */
 class MainActivity : ComponentActivity() {
+    // ---- Mandatory updates through Google Play (IMMEDIATE flow: full screen, app restarts updated) ----
+    private val updateManager by lazy { AppUpdateManagerFactory.create(this) }
+    private val updateLauncher = registerForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { result ->
+        // Backed out or failed: block the app with "Please update" until they update.
+        if (result.resultCode != RESULT_OK) app.playUpdateRequired = true
+    }
+
+    /** Asks Google Play if a newer version is published. No internet / not installed from Play: carry on (offline-first). */
+    private fun checkForPlayUpdate() {
+        updateManager.appUpdateInfo.addOnSuccessListener { info ->
+            val available = info.updateAvailability() == UpdateAvailability.UPDATE_AVAILABLE ||
+                info.updateAvailability() == UpdateAvailability.DEVELOPER_TRIGGERED_UPDATE_IN_PROGRESS
+            if (available && info.isUpdateTypeAllowed(AppUpdateType.IMMEDIATE)) {
+                runCatching {
+                    updateManager.startUpdateFlowForResult(info, updateLauncher, AppUpdateOptions.newBuilder(AppUpdateType.IMMEDIATE).build())
+                }.onFailure { app.playUpdateRequired = true }
+            } else if (info.updateAvailability() == UpdateAvailability.UPDATE_NOT_AVAILABLE) {
+                app.playUpdateRequired = false
+            }
+        }
+    }
+
+    /** "Update now" on the blocking screen: try the Play flow again, else open the Play Store page. */
+    private fun updateApp() {
+        updateManager.appUpdateInfo.addOnSuccessListener { info ->
+            if (info.updateAvailability() == UpdateAvailability.UPDATE_AVAILABLE && info.isUpdateTypeAllowed(AppUpdateType.IMMEDIATE)) {
+                updateManager.startUpdateFlowForResult(info, updateLauncher, AppUpdateOptions.newBuilder(AppUpdateType.IMMEDIATE).build())
+            } else openPlayStore()
+        }.addOnFailureListener { openPlayStore() }
+    }
+
+    private fun openPlayStore() {
+        try {
+            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=$packageName")))
+        } catch (_: Exception) {
+            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=$packageName")))
+        }
+    }
+
+    /** Android photo picker: no storage permission needed. Picked image replaces the auto screenshot. */
+    private val pickReportPhoto = registerForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        if (uri != null) Thread {
+            val path = runCatching {
+                contentResolver.openInputStream(uri)?.use { android.graphics.BitmapFactory.decodeStream(it) }?.let { saveReportJpeg(it) }
+            }.getOrNull()
+            runOnUiThread {
+                if (path != null) { app.reportShot?.let { File(it).delete() }; app.reportShot = path }
+                else app.message = "Could not open that photo."
+            }
+        }.start()
+    }
+
 
     private lateinit var app: AppController
 
@@ -53,12 +111,6 @@ class MainActivity : ComponentActivity() {
             onSendEnquiryWhatsApp = { customMessage ->
                 openWhatsAppToOwner(app.ownerWhatsapp, customMessage)
             },
-            onShareTextWhatsApp = { text ->
-                shareWhatsAppText(text)
-            },
-            onShareImage = { bitmap, caption ->
-                shareBitmapImage(bitmap, caption)
-            },
             onCallSupport = { phone ->
                 callPhone(phone.ifBlank { app.siteConfig.supportPhone.ifBlank { app.prefs.supportPhone } })
             },
@@ -66,6 +118,10 @@ class MainActivity : ComponentActivity() {
                 copyToClipboard(label, text)
             },
             onSendSms = { phone, text -> sendSms(phone, text) },
+            onUpdateApp = { updateApp() },
+            onReportProblem = { screen, orderNo -> captureScreen { path -> app.openReport(screen, orderNo, path) } },
+            onPickReportPhoto = { pickReportPhoto.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
+            onEmail = { to, subject -> sendEmail(to, subject) },
         )
 
         setContent {
@@ -106,6 +162,48 @@ class MainActivity : ComponentActivity() {
         super.onStop()
     }
 
+    /**
+     * Screenshot of exactly what the customer is looking at (PixelCopy reads the real window, so Compose,
+     * images and dialogs are all captured). Saved small (720 px wide, JPEG 70 ≈ 40-90 KB) for slow networks.
+     */
+    private fun captureScreen(done: (String?) -> Unit) {
+        val view = window.decorView
+        if (view.width <= 0 || view.height <= 0) { done(null); return }
+        val bmp = Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888)
+        try {
+            android.view.PixelCopy.request(window, bmp, { result ->
+                if (result != android.view.PixelCopy.SUCCESS) { done(null); return@request }
+                Thread {
+                    val path = runCatching { saveReportJpeg(bmp) }.getOrNull()
+                    runOnUiThread { done(path) }
+                }.start()
+            }, android.os.Handler(android.os.Looper.getMainLooper()))
+        } catch (_: Exception) {
+            done(null)
+        }
+    }
+
+    private fun saveReportJpeg(src: Bitmap): String {
+        val w = minOf(720, src.width)
+        val h = (src.height * (w.toFloat() / src.width)).toInt().coerceAtLeast(1)
+        val small = if (w == src.width) src else Bitmap.createScaledBitmap(src, w, h, true)
+        val dir = File(filesDir, "feedback").apply { mkdirs() }
+        val file = File(dir, "shot-${System.currentTimeMillis()}.jpg")
+        file.outputStream().use { small.compress(Bitmap.CompressFormat.JPEG, 70, it) }
+        return file.absolutePath
+    }
+
+    private fun sendEmail(to: String, subject: String) {
+        val body = "\n\n---\nApp ${BuildConfig.VERSION_NAME} · Android ${android.os.Build.VERSION.RELEASE} · ${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}"
+        val uri = Uri.parse("mailto:$to?subject=${Uri.encode(subject)}&body=${Uri.encode(body)}")
+        try {
+            startActivity(Intent(Intent.ACTION_SENDTO, uri))
+        } catch (_: Exception) {
+            copyToClipboard("Email", to)
+            app.message = if (app.language == "bn") "ইমেল ঠিকানা কপি হয়েছে: $to" else "Email address copied: $to"
+        }
+    }
+
     /** Opens the SMS app with the order text to GMM's number. Works without mobile data. */
     private fun sendSms(phone: String, text: String) {
         val digits = phone.filter { it.isDigit() || it == '+' }
@@ -118,6 +216,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        checkForPlayUpdate()
         app.refresh()
         // Coming back from the UPI app: show the latest payment state of the open order.
         app.openOrderNo?.let { app.refreshOrder(it) }
@@ -198,22 +297,6 @@ class MainActivity : ComponentActivity() {
         startActivity(Intent.createChooser(send, "Share via"))
     }
 
-    private fun shareBitmapImage(bitmap: Bitmap, caption: String) {
-        try {
-            val dir = File(cacheDir, "share").apply { mkdirs() }
-            val file = File(dir, "gmm_organic_card.png")
-            file.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
-            val uri = FileProvider.getUriForFile(this, "$packageName.fileprovider", file)
-            val send = Intent(Intent.ACTION_SEND)
-                .setType("image/png")
-                .putExtra(Intent.EXTRA_STREAM, uri)
-                .putExtra(Intent.EXTRA_TEXT, caption)
-                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            startActivity(Intent.createChooser(send, "Share GMM Organic Card"))
-        } catch (_: Exception) {
-            app.message = "Could not share image. Please try again."
-        }
-    }
 
     private fun callPhone(number: String) {
         try {

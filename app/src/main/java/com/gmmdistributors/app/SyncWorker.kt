@@ -13,7 +13,7 @@ import com.gmmdistributors.app.api.Repo
 import java.util.concurrent.TimeUnit
 
 /**
- * Sends orders that were made without internet. Android runs it as soon as any network is available,
+ * Sends orders and problem reports that were made without internet. Android runs it as soon as any network is available,
  * even if the app is closed, and retries with back-off on a flaky connection. It also refreshes the
  * catalogue snapshot (a ~60-byte call when nothing changed).
  */
@@ -23,7 +23,8 @@ class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
         val lang = Prefs(applicationContext).language
         repo.loadCatalog()
         val r = repo.flushPending(lang)
-        return if (r.stillWaiting > 0) Result.retry() else Result.success()
+        val (_, feedbackWaiting) = repo.flushFeedback(lang)
+        return if (r.stillWaiting > 0 || feedbackWaiting > 0) Result.retry() else Result.success()
     }
 
     companion object {
