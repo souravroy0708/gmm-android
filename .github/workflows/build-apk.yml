@@ -1,10 +1,11 @@
-name: Build GMM APK and Play Bundle
+name: Build GMM APK and Play bundle
 
 on:
   push:
     branches: [main]
   workflow_dispatch:
 
+# Needed to publish GitHub Releases
 permissions:
   contents: write
 
@@ -13,6 +14,57 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      # Files that newer versions removed or converted (.jpg/.png -> .webp). If an update was copied over the
+      # repo without deleting them, Android fails with "Duplicate resources". Use ./update-from-zip.sh to update.
+      - name: Check for files removed in newer versions
+        run: |
+          stale=""
+          for f in app/src/main/java/com/gmmdistributors/app/api/DummyServer.kt \
+                   app/src/main/java/com/gmmdistributors/app/DummyCatalog.kt \
+                   app/src/main/java/com/gmmdistributors/app/ThoughtCard.kt \
+                   app/src/main/res/font/anek_devanagari.ttf \
+                   app/src/main/res/drawable/hero_farm_1.webp \
+                   app/src/main/res/drawable/hero_farm_2.webp \
+                   app/src/main/res/drawable/ic_launcher_foreground.xml \
+                   app/src/main/res/drawable/ic_launcher_background.xml; do
+            [ -f "$f" ] && stale="$stale $f"
+          done
+          # Same resource name with two file types (e.g. gmm_logo.jpg + gmm_logo.webp) breaks the build.
+          dups=$(find app/src/main/res -type f \( -name '*.png' -o -name '*.jpg' -o -name '*.jpeg' -o -name '*.webp' -o -name '*.xml' \) \
+                 | sed -E 's/\.[^./]+$//' | sort | uniq -d)
+          for d in $dups; do
+            for f in "$d".jpg "$d".jpeg "$d".png; do [ -f "$f" ] && [ -f "$d.webp" ] && stale="$stale $f"; done
+          done
+          if [ -n "$stale" ]; then
+            echo "::error::These files were removed or replaced in a newer version but are still in the repo:$stale"
+            echo "Delete them:  git rm$stale && git commit -m 'Remove old files' && git push"
+            echo "Next time, update with ./update-from-zip.sh so removed files are deleted automatically."
+            exit 1
+          fi
+
+      - name: Check signing secrets (needed for the Google Play .aab)
+        env:
+          S1: ${{ secrets.GMM_KEYSTORE_BASE64 }}
+          S2: ${{ secrets.GMM_KEYSTORE_PASSWORD }}
+          S3: ${{ secrets.GMM_KEY_ALIAS }}
+          S4: ${{ secrets.GMM_KEY_PASSWORD }}
+        run: |
+          missing=""
+          [ -z "$S1" ] && missing="$missing GMM_KEYSTORE_BASE64"
+          [ -z "$S2" ] && missing="$missing GMM_KEYSTORE_PASSWORD"
+          [ -z "$S3" ] && missing="$missing GMM_KEY_ALIAS"
+          [ -z "$S4" ] && missing="$missing GMM_KEY_PASSWORD"
+          if [ -n "$missing" ]; then
+            echo "::warning::Missing secrets:$missing. Only a test APK (throwaway key) will be built, NO .aab for Google Play. Fix: run ./scripts/setup-signing.sh once."
+            {
+              echo "## ⚠️ No Google Play bundle in this build"
+              echo "Missing repository secrets:**$missing**"
+              echo ""
+              echo "Run once on your computer, in this repo:  \`./scripts/setup-signing.sh\`"
+              echo "It creates the signing key and uploads all 4 secrets. Then run this workflow again."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       - name: Set up Java 17
         uses: actions/setup-java@v4
@@ -28,7 +80,7 @@ jobs:
           KEYSTORE_BASE64: ${{ secrets.GMM_KEYSTORE_BASE64 }}
         run: |
           if [ -z "$KEYSTORE_BASE64" ]; then
-            echo "::warning::No GMM_KEYSTORE_BASE64 secret. Building with debug key."
+            echo "::warning::No GMM_KEYSTORE_BASE64 secret. This APK uses a throwaway key and testers can't update it in place."
           else
             echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
             echo "GMM_KEYSTORE_PATH=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
@@ -53,8 +105,12 @@ jobs:
           chmod +x gradlew
           ./gradlew assembleRelease --console=plain
           mv app/build/outputs/apk/release/app-release.apk "app/build/outputs/apk/release/GMM-Organic-v1.0.${{ github.run_number }}.apk"
+          # Fixed name too, so this link always gives the newest version:
+          # https://github.com/<you>/<repo>/releases/latest/download/GMMOrganic.apk
           cp "app/build/outputs/apk/release/GMM-Organic-v1.0.${{ github.run_number }}.apk" app/build/outputs/apk/release/GMMOrganic.apk
 
+      # Google Play needs an .aab (App Bundle), not an .apk. Only built when your real signing key is
+      # configured, because Play rejects bundles signed with the throwaway debug key.
       - name: Build signed release bundle (.aab) for Google Play
         if: env.GMM_KEYSTORE_PATH != ''
         env:
@@ -65,6 +121,28 @@ jobs:
           ./gradlew bundleRelease --console=plain
           mv app/build/outputs/bundle/release/app-release.aab "app/build/outputs/bundle/release/GMM-Organic-v1.0.${{ github.run_number }}.aab"
 
+      - name: Warn when no Play bundle was built
+        if: env.GMM_KEYSTORE_PATH == ''
+        run: echo "::warning::No .aab built. Add the GMM_KEYSTORE_* secrets (./scripts/setup-signing.sh) to get a Google Play bundle."
+
+      - name: Upload Play bundle (.aab)
+        if: env.GMM_KEYSTORE_PATH != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: GMM-Organic-play-bundle-v1.0.${{ github.run_number }}
+          path: app/build/outputs/bundle/release/*.aab
+          retention-days: 90
+
+      # R8 obfuscates the code; this file turns crash reports in Play Console back into readable code.
+      # Play Console > App bundle explorer > (version) > Downloads > ReTrace mapping file.
+      - name: Upload mapping file (readable crash reports)
+        if: env.GMM_KEYSTORE_PATH != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: GMM-Organic-mapping-v1.0.${{ github.run_number }}
+          path: app/build/outputs/mapping/release/mapping.txt
+          retention-days: 90
+
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
@@ -72,17 +150,44 @@ jobs:
           path: app/build/outputs/apk/release/*.apk
           retention-days: 30
 
-      - name: Upload Play Store bundle (.aab) + mapping file
-        if: env.GMM_KEYSTORE_PATH != ''
+      - name: Publish GitHub Release (signed builds on main only)
+        if: success() && env.GMM_KEYSTORE_PATH != '' && github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.${{ github.run_number }}
+          name: GMM Organic 1.0.${{ github.run_number }}
+          make_latest: true
+          files: |
+            app/build/outputs/apk/release/GMMOrganic.apk
+            app/build/outputs/apk/release/GMM-Organic-v1.0.${{ github.run_number }}.apk
+          body: |
+            **Install for testing:** download `GMMOrganic.apk` on an Android phone and open it. If asked, allow installing
+            from your browser or Files app. Updating? Install over the old version; cart and orders stay.
+            **Google Play:** use the `GMM-Organic-play-bundle` artifact (.aab) from this workflow run, not the APK.
+
+      - name: Build summary
+        if: success()
+        run: |
+          {
+            echo "## GMM Organic 1.0.${{ github.run_number }} (version code ${{ github.run_number }})"
+            if [ -n "$GMM_KEYSTORE_PATH" ]; then
+              echo "| Artifact | Use |"
+              echo "|---|---|"
+              echo "| GMM-Organic-play-bundle-v1.0.${{ github.run_number }} | **Upload the .aab to Google Play** |"
+              echo "| GMM-Organic-mapping-v1.0.${{ github.run_number }} | Upload mapping.txt in Play Console (readable crashes) |"
+              echo "| GMM-Organic-v1.0.${{ github.run_number }} | APK for installing on test phones |"
+            else
+              echo "Only a test APK was built (no signing secrets). See the warning above."
+            fi
+            if [ -f app/google-services.json ]; then echo ""; echo "Push notifications: ✅ on"; else echo ""; echo "Push notifications: off (no GOOGLE_SERVICES_JSON_BASE64 secret)"; fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload build reports (only when the build fails)
+        if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: GMM-Organic-PlayStore-v1.0.${{ github.run_number }}
+          name: build-reports
           path: |
-            app/build/outputs/bundle/release/*.aab
-            app/build/outputs/mapping/release/mapping.txt
-          retention-days: 90
-
-      - name: Warn when the bundle could not be built
-        if: env.GMM_KEYSTORE_PATH == ''
-        run: |
-          echo "::warning::No signing secrets: the .aab for Google Play was NOT built. Add GMM_KEYSTORE_BASE64, GMM_KEYSTORE_PASSWORD, GMM_KEY_ALIAS, GMM_KEY_PASSWORD in Settings > Secrets > Actions."
+            app/build/reports/
+            app/build/intermediates/lint_vital_intermediate_text_report/
+          retention-days: 7

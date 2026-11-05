@@ -60,6 +60,21 @@ Google Play in-app updates (IMMEDIATE) on every app open/resume, plus a server m
 (Admin → Business settings → android min version). Offline the app keeps working; the update is enforced once online.
 See `GMM-PlayStore-Launch.md` for the full launch sheet.
 
+## Building for Google Play (same as Bas1Minute)
+One-time, on your computer inside this repo:
+```bash
+./scripts/install-gh.sh        # only if `gh --version` is older than 2.20
+./scripts/setup-signing.sh     # creates the signing key in ~/gmm-signing and uploads the 4 GMM_KEYSTORE_* secrets
+```
+**Back up `~/gmm-signing`** (password manager / private cloud). Then every push to `main` produces:
+| Artifact | Use |
+|---|---|
+| `GMM-Organic-play-bundle-v1.0.N` | the **.aab** to upload to Google Play |
+| `GMM-Organic-mapping-v1.0.N` | `mapping.txt` for readable crash reports in Play Console |
+| `GMM-Organic-v1.0.N` | APK for test phones (also published as a GitHub Release `GMMOrganic.apk`) |
+`./scripts/get-play-bundle.sh` starts a build and downloads all three into `./dist`.
+Update the repo from a new zip with `./update-from-zip.sh ~/Downloads/gmm-android-latest.zip` (it also deletes removed files).
+
 ## Release checklist (Play Store)
 
 1. Repository secrets for signing: `GMM_KEYSTORE_PATH`, `GMM_KEYSTORE_PASSWORD`, `GMM_KEY_ALIAS`, `GMM_KEY_PASSWORD`
