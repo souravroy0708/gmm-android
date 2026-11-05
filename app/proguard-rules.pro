@@ -7,3 +7,4 @@
 # Stack traces in Play Console stay readable (Play deobfuscates with the uploaded mapping file).
 -keepattributes SourceFile,LineNumberTable
 -renamesourcefileattribute SourceFile
+-keep class com.gmmdistributors.app.StatusWorker { public <init>(android.content.Context, androidx.work.WorkerParameters); }

@@ -78,6 +78,9 @@ data class PhoneActions(
     val onReportProblem: (String, String) -> Unit = { _, _ -> },
     val onPickReportPhoto: () -> Unit = {},
     val onUpdateApp: () -> Unit = {},
+    val onShareText: (String) -> Unit = {},
+    val onAskNotifications: () -> Unit = {},
+    val onRequestReview: () -> Unit = {},
 )
 
 private data class NavTabItem(val tab: Tab, val label: String, val icon: ImageVector)
@@ -185,12 +188,26 @@ fun MainShell(app: AppController, actions: PhoneActions) {
     ) { padding ->
         PriceReviewDialog(app)
         PackPickerSheet(app)
+        // After the first order: ask for notification permission (order updates). Once, in context.
+        LaunchedEffect(app.newlyPlacedOrder?.orderNo, app.queuedOrder?.key) {
+            if (app.newlyPlacedOrder != null || app.queuedOrder != null) actions.onAskNotifications()
+        }
+        // Right after the language picker: ask once for notifications (offers, tips, order updates).
+        LaunchedEffect(app.showOnboarding) {
+            if (!app.showOnboarding && !app.prefs.onboardingNotifAsked) { app.prefs.onboardingNotifAsked = true; actions.onAskNotifications() }
+        }
+        // After a delivered order: Google Play rating prompt, once.
+        LaunchedEffect(app.reviewDue) {
+            if (app.reviewDue) { kotlinx.coroutines.delay(1500); actions.onRequestReview(); app.reviewShown() }
+        }
         if (app.reportOpen) {
             BackHandler { app.closeReport() }
         }
         val placed = app.newlyPlacedOrder
         val queued = app.queuedOrder
-        if (app.reportOpen) {
+        if (app.showOnboarding) {
+            Box(Modifier.fillMaxSize().padding(padding)) { LanguagePickerScreen(app) }
+        } else if (app.reportOpen) {
             Box(Modifier.fillMaxSize().padding(padding)) { ReportProblemScreen(app, actions) }
         } else if (queued != null) {
             BackHandler { app.queuedOrder = null }

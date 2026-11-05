@@ -373,6 +373,8 @@ fun CartCheckoutTab(app: AppController, actions: PhoneActions) {
                 placeholder = if (bn) "যেমন: সকাল ১০টার মধ্যে ডেলিভারি হলে ভালো হয়" else "e.g., Need for 3 acres potato cultivation",
             )
 
+            InviteCodeField(app)
+
             blocker?.let {
                 Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(WarnBg).padding(12.dp)) {
                     Text(it, style = MaterialTheme.typography.bodyMedium, color = WarnInk)

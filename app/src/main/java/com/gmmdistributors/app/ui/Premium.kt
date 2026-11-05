@@ -23,6 +23,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.filled.Grass
+import androidx.compose.material.icons.filled.Healing
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.RiceBowl
 import androidx.compose.material.icons.filled.Spa
@@ -54,18 +55,21 @@ import com.gmmdistributors.app.api.Product
 fun kindColor(kind: String): Color = when (kind) {
     "pesticide" -> KindPest
     "food" -> KindFood
+    "ayush" -> KindAyush
     else -> KindFert
 }
 
 fun kindIcon(kind: String): ImageVector = when (kind) {
     "pesticide" -> Icons.Filled.Spa
     "food" -> Icons.Filled.RiceBowl
+    "ayush" -> Icons.Filled.Healing
     else -> Icons.Filled.Grass
 }
 
 fun kindLabel(kind: String, lang: String): String = when (kind) {
     "pesticide" -> if (lang == "bn") "জৈব কীটনাশক" else "Bio-pesticide"
     "food" -> if (lang == "bn") "জৈব খাদ্য" else "Organic food"
+    "ayush" -> if (lang == "bn") "আয়ুষ ওষুধ" else "Ayush medicine"
     else -> if (lang == "bn") "জৈব সার" else "Organic fertilizer"
 }
 
@@ -145,6 +149,10 @@ fun ProductGridCard(
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(product.localizedName(lang), style = MaterialTheme.typography.titleMedium, maxLines = 2,
                 overflow = TextOverflow.Ellipsis, modifier = Modifier.heightIn(min = 48.dp))
+            if (product.isMedicine) {
+                Text(if (bn) "⚕ আয়ুর্বেদিক · লেবেল পড়ুন" else "⚕ Ayurvedic · read the label",
+                    style = MaterialTheme.typography.labelMedium, color = KindAyush, maxLines = 1)
+            }
             if (v != null) {
                 Text(
                     if (product.variants.size > 1) "${v.localizedLabel(lang)} · ${if (bn) "আরও ${product.variants.size - 1}টি সাইজ" else "+${product.variants.size - 1} sizes"}"

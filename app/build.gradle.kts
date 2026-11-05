@@ -4,6 +4,9 @@ plugins {
     alias(libs.plugins.kotlin.compose)
 }
 
+// Push notifications need app/google-services.json (Firebase). Without it the app builds and works, just without pushes.
+if (file("google-services.json").exists()) apply(plugin = "com.google.gms.google-services")
+
 // Pilot builds on GitHub Actions are signed with YOUR key (from repository secrets), so every new
 // APK installs as an update over the previous one. Without the secrets it falls back to the debug key.
 val releaseKeystore: String? = System.getenv("GMM_KEYSTORE_PATH")
@@ -103,4 +106,7 @@ dependencies {
     // Play's update library pulls in an ancient Fragment (1.0) transitively; the Activity Result APIs
     // (photo picker, update flow) need >= 1.3. Pin a current one (R8 removes what we do not use).
     implementation(libs.fragment)
+    implementation(libs.play.review.ktx)
+    implementation(platform(libs.firebase.bom))
+    implementation(libs.firebase.messaging)  // push: campaigns from the admin + instant order updates  // Google Play in-app review (asked once, after a delivered order)
 }

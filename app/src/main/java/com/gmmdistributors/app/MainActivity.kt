@@ -10,6 +10,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import com.google.android.play.core.review.ReviewManagerFactory
 import com.google.android.play.core.appupdate.AppUpdateManagerFactory
 import com.google.android.play.core.appupdate.AppUpdateOptions
 import com.google.android.play.core.install.model.AppUpdateType
@@ -43,6 +44,52 @@ class MainActivity : ComponentActivity() {
         if (result.resultCode != RESULT_OK) app.playUpdateRequired = true
     }
 
+    // ---- Notifications: asked only after the first order, when "we'll tell you when it ships" makes sense ----
+    private val notifPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) Push.refreshToken(this)
+    }
+
+    private fun askNotificationsOnce() {
+        if (android.os.Build.VERSION.SDK_INT < 33) return
+        val sp = getSharedPreferences("gmm_once", MODE_PRIVATE)
+        if (sp.getBoolean("asked_notif", false)) return
+        if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) == android.content.pm.PackageManager.PERMISSION_GRANTED) return
+        sp.edit().putBoolean("asked_notif", true).apply()
+        notifPermission.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+    }
+
+    /** Google Play in-app review: Play itself decides whether to show it (quota), we only ask once. */
+    private fun requestReview() {
+        val rm = ReviewManagerFactory.create(this)
+        rm.requestReviewFlow().addOnCompleteListener { task ->
+            if (task.isSuccessful) rm.launchReviewFlow(this, task.result)
+        }
+    }
+
+    /** Product / invite links and notification taps. */
+    private fun handleIntent(intent: Intent?) {
+        intent ?: return
+        app.openDeepLink(intent.data)
+        val pushLink = intent.getStringExtra(Push.EXTRA_LINK)
+        val pushId = intent.getStringExtra(Push.EXTRA_CAMPAIGN).orEmpty()
+        if (pushLink != null && intent.getStringExtra(StatusWorker.EXTRA_ORDER) == null) {
+            app.openPushLink(pushLink, pushId)
+            intent.removeExtra(Push.EXTRA_LINK)
+        }
+        intent.getStringExtra(StatusWorker.EXTRA_ORDER)?.let { no ->
+            app.tab = Tab.Orders
+            app.openOrderNo = no
+            app.refreshOrder(no)
+            intent.removeExtra(StatusWorker.EXTRA_ORDER)
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleIntent(intent)
+    }
+
     /** Asks Google Play if a newer version is published. No internet / not installed from Play: carry on (offline-first). */
     private fun checkForPlayUpdate() {
         updateManager.appUpdateInfo.addOnSuccessListener { info ->
@@ -65,6 +112,12 @@ class MainActivity : ComponentActivity() {
                 updateManager.startUpdateFlowForResult(info, updateLauncher, AppUpdateOptions.newBuilder(AppUpdateType.IMMEDIATE).build())
             } else openPlayStore()
         }.addOnFailureListener { openPlayStore() }
+    }
+
+    /** Android share sheet (WhatsApp, Facebook, SMS...). Farmers tell farmers. */
+    private fun shareText(text: String) {
+        val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, text)
+        try { startActivity(Intent.createChooser(send, null)) } catch (_: Exception) { copyToClipboard("GMM", text) }
     }
 
     private fun openPlayStore() {
@@ -99,6 +152,10 @@ class MainActivity : ComponentActivity() {
         )
         super.onCreate(savedInstanceState)
         app = AppController(applicationContext, lifecycleScope)
+        Push.ensureChannels(this)
+        StatusWorker.schedule(this)
+        Push.refreshToken(this)
+        handleIntent(intent)
 
         val actions = PhoneActions(
             onSendOrderWhatsApp = { order ->
@@ -119,6 +176,9 @@ class MainActivity : ComponentActivity() {
             },
             onSendSms = { phone, text -> sendSms(phone, text) },
             onUpdateApp = { updateApp() },
+            onShareText = { text -> shareText(text) },
+            onAskNotifications = { askNotificationsOnce() },
+            onRequestReview = { requestReview() },
             onReportProblem = { screen, orderNo -> captureScreen { path -> app.openReport(screen, orderNo, path) } },
             onPickReportPhoto = { pickReportPhoto.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
             onEmail = { to, subject -> sendEmail(to, subject) },

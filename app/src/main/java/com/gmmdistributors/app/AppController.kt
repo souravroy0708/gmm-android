@@ -72,6 +72,15 @@ class AppController(private val ctx: Context, private val scope: CoroutineScope)
 
     // Wishlist (product ids), kept on the phone so it works offline and without sign-in
     var wishlist by mutableStateOf<Set<Int>>(emptySet())
+    // Growth: Krishi Mitra invites, onboarding, Play review
+    var inviteCode by mutableStateOf(prefs.inviteCode)
+    var referrals by mutableStateOf<com.gmmdistributors.app.api.ReferralStats?>(null)
+    var showOnboarding by mutableStateOf(!prefs.onboarded)
+    var reviewDue by mutableStateOf(false)
+
+    // Recently viewed product slugs (newest first), kept on the phone
+    var recentSlugs by mutableStateOf<List<String>>(emptyList())
+
     // Increments on every add-to-cart: the bottom-bar cart badge bounces
     var cartBump by mutableStateOf(0)
     // Pack picker bottom sheet (product with several pack sizes)
@@ -128,6 +137,9 @@ class AppController(private val ctx: Context, private val scope: CoroutineScope)
         launch {
             repo.cachedCatalog()?.let { applyCatalog(it) }  // SQLite snapshot, or the copy bundled in the APK
             pricesCheckedAt = repo.catalogCheckedAt()
+            recentSlugs = withContext(Dispatchers.IO) {
+                db.getCache("recent")?.split(",")?.map { it.trim() }?.filter { it.isNotBlank() } ?: emptyList()
+            }
             wishlist = withContext(Dispatchers.IO) {
                 db.getCache("wishlist")?.split(",")?.mapNotNull { it.trim().toIntOrNull() }?.toSet() ?: emptySet()
             }
@@ -204,6 +216,7 @@ class AppController(private val ctx: Context, private val scope: CoroutineScope)
                 (repo.loadOrders(language) as? Res.Ok)?.let { orders = it.value }
             }
         }
+        if (!prefs.reviewAsked && orders.any { it.status == "DELIVERED" }) reviewDue = true
         cartQuantities = withContext(Dispatchers.IO) { db.cartMap() }
         refreshing = false
     }
@@ -338,6 +351,98 @@ class AppController(private val ctx: Context, private val scope: CoroutineScope)
         if (clamped > current) {
             cartBump += 1
             if (message == null) message = say("Added to cart ✓", "কার্টে যোগ হয়েছে ✓")
+        }
+    }
+
+    // ---------- Growth ----------
+
+    /** My invite code: from the account, or created on first use (needs internet once). */
+    val myReferralCode: String get() = me?.referralCode.orEmpty()
+
+    fun loadReferrals() = launch {
+        when (val r = repo.loadReferrals(language)) {
+            is Res.Ok -> { referrals = r.value; if (me == null) me = repo.cachedMe() }
+            is Res.Fail -> if (!r.offline) message = r.message
+        }
+    }
+
+    fun setInvite(code: String) {
+        val c = code.trim().uppercase().filter { it.isLetterOrDigit() }.take(12)
+        prefs.inviteCode = c
+        inviteCode = c
+    }
+
+    /** Notification tap: "kind:ayush", "product:<slug>", "tab:orders|advisory|cart|profile" or blank (home). */
+    fun openPushLink(link: String, campaignId: String) {
+        if (campaignId.isNotBlank()) launch { repo.reportPushOpened(campaignId) }
+        val (k, v) = link.substringBefore(':') to link.substringAfter(':', "")
+        when (k) {
+            "kind" -> { tab = Tab.Shop; openProductSlug = null; selectedCategorySlug = v.ifBlank { "all" } }
+            "product" -> { tab = Tab.Shop; if (products.any { it.slug == v }) openProductSlug = v }
+            "tab" -> tab = when (v) { "orders" -> Tab.Orders; "advisory" -> Tab.Advisory; "cart" -> Tab.Cart; "profile" -> Tab.Profile; else -> Tab.Shop }
+            else -> tab = Tab.Shop
+        }
+    }
+
+    var promoPush by mutableStateOf(prefs.promoPush)
+
+    fun changePromoPush(on: Boolean) {
+        prefs.promoPush = on
+        promoPush = on
+        Push.upload(ctx)
+    }
+
+    /** App Links: shop.gmmdistributors.xyz/p/<slug> opens a product, /r/<code> saves an invite. */
+    fun openDeepLink(uri: Uri?) {
+        val segs = uri?.pathSegments ?: return
+        when (segs.getOrNull(0)) {
+            "p" -> segs.getOrNull(1)?.let { slug -> tab = Tab.Shop; openProductSlug = slug }
+            "r" -> segs.getOrNull(1)?.let { code ->
+                if (code.uppercase() != myReferralCode) {
+                    setInvite(code)
+                    message = say("🤝 Invite code $code saved. It is used on your next order.", "🤝 আমন্ত্রণ কোড $code সেভ হয়েছে। পরের অর্ডারে লাগবে।")
+                }
+            }
+        }
+    }
+
+    fun finishOnboarding(lang: String) {
+        setLanguageCode(lang)
+        prefs.onboarded = true
+        showOnboarding = false
+    }
+
+    fun reviewShown() {
+        prefs.reviewAsked = true
+        reviewDue = false
+    }
+
+    /** Invite text for WhatsApp: personal, short, with the code to read out on the phone. */
+    fun inviteText(): String {
+        val code = referrals?.code?.ifBlank { null } ?: myReferralCode
+        val link = referrals?.link?.ifBlank { null } ?: "https://shop.gmmdistributors.xyz/r/$code/"
+        return if (language == "bn")
+            "নমস্কার! আমি GMM Organic থেকে জৈব সার, কীটনাশক ও খাঁটি খাবার কিনি। ইন্টারনেট ছাড়াও অর্ডার করা যায়, ক্যাশ অন ডেলিভারি আছে। আমার কোড $code দিয়ে অর্ডার করুন: $link"
+        else "Hi! I buy organic fertilizer, pest care and pure food from GMM Organic. Works without internet, cash on delivery. Order with my code $code: $link"
+    }
+
+    fun markViewed(slug: String) {
+        if (recentSlugs.firstOrNull() == slug) return
+        recentSlugs = (listOf(slug) + recentSlugs.filter { it != slug }).take(10)
+        val save = recentSlugs.joinToString(",")
+        launch { withContext(Dispatchers.IO) { db.putCache("recent", save) } }
+    }
+
+    /** Text for "share this product" (WhatsApp etc.): name, pack, price and where to get it. */
+    fun shareTextFor(p: Product): String {
+        val v = p.defaultVariant
+        val link = "https://shop.gmmdistributors.xyz/p/${p.slug}/"
+        return buildString {
+            append(p.localizedName(language))
+            if (v != null) append(" · ${v.localizedLabel(language)} · ₹${"%.0f".format(java.util.Locale.US, v.price)}")
+            append("\n")
+            append(if (language == "bn") "GMM Organic অ্যাপে অর্ডার করুন: " else "Order on the GMM Organic app: ")
+            append(link)
         }
     }
 
@@ -494,7 +599,7 @@ class AppController(private val ctx: Context, private val scope: CoroutineScope)
         }
 
         val placeLines = cartLines
-        when (val res = repo.placeOrder(address, placeLines, paymentMethod, note, checkoutKey, expected, language)) {
+        when (val res = repo.placeOrder(address, placeLines, paymentMethod, note, checkoutKey, expected, language, inviteCode)) {
             is Res.Ok -> {
                 checkoutKey = UUID.randomUUID().toString()
                 cartQuantities = withContext(Dispatchers.IO) { db.cartMap() }
@@ -556,6 +661,7 @@ class AppController(private val ctx: Context, private val scope: CoroutineScope)
             lines = lines.map { PendingLine(it.variant.id, it.product.name, it.product.nameBn, it.variant.label, it.quantity, it.variant.price) },
             expectedTotal = total,
             note = note,
+            referralCode = inviteCode,
         )
         repo.queueOrder(p)
         cartQuantities = emptyMap()

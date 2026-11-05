@@ -27,6 +27,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.ShoppingBag
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -156,6 +157,7 @@ fun CategoryCircles(kinds: List<String>, selected: String, lang: String, onPick:
                         "all" -> if (lang == "bn") "সব" else "All"
                         "fertilizer" -> if (lang == "bn") "সার" else "Fertilizer"
                         "pesticide" -> if (lang == "bn") "কীটনাশক" else "Pest care"
+                        "ayush" -> if (lang == "bn") "আয়ুষ" else "Ayush"
                         else -> if (lang == "bn") "খাবার" else "Food"
                     },
                     style = MaterialTheme.typography.labelLarge, color = if (on) TextMain else Muted, maxLines = 1,
@@ -298,5 +300,41 @@ fun StickyBuyBar(v: ProductVariant, inCart: Int, lang: String, onAdd: () -> Unit
                 else -> BigButton(text = "${if (bn) "কার্টে যোগ" else "Add to cart"}", onClick = onAdd)
             }
         }
+    }
+}
+
+/** Ayush medicines: label caution, licence number and when to see a doctor. Always visible, never hidden. */
+@Composable
+fun MedicineCautionCard(p: Product, lang: String) {
+    val bn = lang == "bn"
+    Column(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(KindAyush.copy(alpha = 0.09f))
+            .border(1.5.dp, KindAyush.copy(alpha = 0.45f), RoundedCornerShape(16.dp)).padding(14.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Text(if (bn) "⚕ ব্যবহারের আগে পড়ুন" else "⚕ Read before use", style = MaterialTheme.typography.titleMedium, color = KindAyush)
+        val c = p.localizedCaution(lang)
+        Text(
+            c.ifBlank { if (bn) "আয়ুর্বেদিক ওষুধ। লেবেলে লেখা নিয়ম মেনে ব্যবহার করুন। শিশুদের নাগালের বাইরে রাখুন।" else "Ayurvedic medicine. Use only as written on the label. Keep away from children." },
+            style = MaterialTheme.typography.bodyMedium, color = TextMain,
+        )
+        if (p.licenseNo.isNotBlank()) {
+            Text("${if (bn) "লাইসেন্স নং" else "Licence no."}: ${p.licenseNo}", style = MaterialTheme.typography.labelLarge, color = KindAyush)
+        }
+        Text(
+            if (bn) "সমস্যা না কমলে বা বাড়লে ডাক্তার দেখান। এটি ডাক্তারের চিকিৎসার বিকল্প নয়।"
+            else "If it does not get better, or gets worse, see a doctor. This is not a substitute for medical care.",
+            style = MaterialTheme.typography.bodySmall, color = Muted,
+        )
+    }
+}
+
+@Composable
+fun ShareButton(modifier: Modifier = Modifier, onClick: () -> Unit) {
+    Box(
+        modifier.size(40.dp).shadow(2.dp, CircleShape).clip(CircleShape).background(CardBg).clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(Icons.Filled.Share, contentDescription = "Share", tint = AccentGreen, modifier = Modifier.size(20.dp))
     }
 }

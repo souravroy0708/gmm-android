@@ -316,7 +316,7 @@ class LocalDb private constructor(context: Context) :
         writableDatabase.delete("orders", null, null)
         writableDatabase.delete("addresses", null, null)
         writableDatabase.delete("outbox", null, null)
-        writableDatabase.delete("cache", "key NOT IN (?, ?, ?, ?)", arrayOf("catalog", "catalog_checked", "guest_address", "wishlist"))
+        writableDatabase.delete("cache", "key NOT IN (?, ?, ?, ?, ?)", arrayOf("catalog", "catalog_checked", "guest_address", "wishlist", "recent"))
     }
 
     @Synchronized

@@ -54,6 +54,35 @@ class Prefs(context: Context) {
         get() = p.getString("theme", "light") ?: "light"
         set(v) = p.edit().putString("theme", v).apply()
 
+    /** Invite code from a Krishi Mitra link (shop.gmmdistributors.xyz/r/CODE), used on the next order. */
+    var inviteCode: String
+        get() = p.getString("invite_code", "") ?: ""
+        set(v) = p.edit().putString("invite_code", v.trim().uppercase().take(12)).apply()
+
+    /** Firebase token of this phone (sent to the server for notifications). */
+    var pushToken: String
+        get() = p.getString("push_token", "") ?: ""
+        set(v) = p.edit().putString("push_token", v).apply()
+
+    /** Offers & Krishi tips notifications (order updates always arrive). */
+    var promoPush: Boolean
+        get() = p.getBoolean("promo_push", true)
+        set(v) = p.edit().putBoolean("promo_push", v).apply()
+
+    /** First launch: show the big বাংলা / English picker once. */
+    var onboarded: Boolean
+        get() = p.getBoolean("onboarded", false)
+        set(v) = p.edit().putBoolean("onboarded", v).apply()
+
+    var onboardingNotifAsked: Boolean
+        get() = p.getBoolean("onb_notif", false)
+        set(v) = p.edit().putBoolean("onb_notif", v).apply()
+
+    /** Google Play review asked once, after the first delivered order. */
+    var reviewAsked: Boolean
+        get() = p.getBoolean("review_asked", false)
+        set(v) = p.edit().putBoolean("review_asked", v).apply()
+
     fun wipeAll() {
         p.edit().clear().apply()
     }

@@ -107,15 +107,15 @@ fun ShopTab(app: AppController, actions: PhoneActions) {
                     color = Color.White, style = MaterialTheme.typography.headlineMedium,
                 )
                 Text(
-                    text = if (bn) "আজ কী লাগবে? জৈব সার, কীটনাশক ও খাঁটি খাবার, বাড়িতে পৌঁছে দেব।"
-                    else "What do you need today? Organic inputs and pure food, delivered home.",
+                    text = if (bn) "আজ কী লাগবে? জৈব সার, কীটনাশক, খাঁটি খাবার ও আয়ুষ ওষুধ, বাড়িতে পৌঁছে দেব।"
+                    else "What do you need today? Organic inputs, pure food and Ayush medicine, delivered home.",
                     color = MutedOnDark, style = MaterialTheme.typography.bodyMedium,
                 )
                 Spacer(Modifier.height(6.dp))
                 androidx.compose.material3.TextField(
                     value = app.searchQuery,
                     onValueChange = { app.searchQuery = it.take(40) },
-                    placeholder = { Text(if (bn) "খুঁজুন: নিম, সার, চাল…" else "Search: neem, manure, rice…") },
+                    placeholder = { Text(if (bn) "খুঁজুন: নিম, সার, চাল, ব্যথার স্প্রে…" else "Search: neem, manure, rice, pain spray…") },
                     leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null, tint = Muted) },
                     trailingIcon = {
                         if (app.searchQuery.isNotEmpty()) {
@@ -140,7 +140,7 @@ fun ShopTab(app: AppController, actions: PhoneActions) {
                 // Offer carousel (admin: Home banners) and category circles
                 if (filter == "all" && query.isBlank()) HeroCarousel(app.banners, lang) { app.openBanner(it) }
                 CategoryCircles(
-                    kinds = listOf("fertilizer", "pesticide", "food").filter { it in kinds },
+                    kinds = listOf("fertilizer", "pesticide", "food", "ayush").filter { it in kinds },
                     selected = filter, lang = lang,
                 ) { k -> app.selectedCategorySlug = if (k == filter && k != "all") "all" else k }
 
@@ -150,11 +150,13 @@ fun ShopTab(app: AppController, actions: PhoneActions) {
                 if (filter == "all" && query.isBlank()) {
                     ProductRail(if (bn) "❤ আপনার পছন্দের তালিকা" else "❤ Your wishlist", app.products.filter { it.id in app.wishlist }, app)
                     ProductRail(if (bn) "⭐ সবচেয়ে বেশি বিক্রি" else "⭐ Bestsellers", app.products.filter { it.isFeatured }, app)
+                    ProductRail(if (bn) "🕘 সম্প্রতি দেখেছেন" else "🕘 Recently viewed",
+                        app.recentSlugs.mapNotNull { s -> app.products.firstOrNull { it.slug == s } }, app)
                 }
 
                 SectionHeader(
                     title = when (filter) {
-                        "fertilizer", "pesticide", "food" -> kindLabel(filter, lang)
+                        "fertilizer", "pesticide", "food", "ayush" -> kindLabel(filter, lang)
                         else -> if (bn) "সব পণ্য" else "All products"
                     } + " (${shown.size})",
                     action = if (filter != "all" || query.isNotBlank()) (if (bn) "সব দেখুন" else "Show all") else null,
@@ -289,8 +291,10 @@ fun ProductDetailScreen(
         AppCard {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OrganicBadge(text = kindLabel(product.kind, lang), isPesticide = product.kind == "pesticide")
-                OrganicBadge(text = if (lang == "bn") "১০০% রাসায়নিকমুক্ত" else "100% Chemical-Free")
+                if (product.isMedicine) OrganicBadge(text = if (lang == "bn") "আয়ুর্বেদিক" else "Ayurvedic")
+                else OrganicBadge(text = if (lang == "bn") "১০০% রাসায়নিকমুক্ত" else "100% Chemical-Free")
             }
+            if (product.isMedicine) MedicineCautionCard(product, lang)
             Text(product.localizedName(lang), style = MaterialTheme.typography.headlineMedium)
             Text(product.localizedDesc(lang), style = MaterialTheme.typography.bodyLarge, color = Muted)
 
@@ -472,7 +476,9 @@ fun ProductDetailScreen(
 
         Spacer(Modifier.height(24.dp))
     }
+    androidx.compose.runtime.LaunchedEffect(product.slug) { app.markViewed(product.slug) }
     WishHeart(on = product.id in app.wishlist, modifier = Modifier.align(Alignment.TopEnd).padding(16.dp)) { app.toggleWish(product.id) }
+    ShareButton(modifier = Modifier.align(Alignment.TopEnd).padding(top = 16.dp, end = 64.dp)) { actions.onShareText(app.shareTextFor(product)) }
     StickyBuyBar(
         v = selectedVariant,
         inCart = currentCartQty,

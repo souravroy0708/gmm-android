@@ -4,6 +4,8 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- Know when the network comes back, to send orders saved offline -->
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- Order updates ("dispatched", "delivered"); asked only after the first order -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <!-- Direct intent queries for WhatsApp & WhatsApp Business order messages, phone calls, and web links -->
     <queries>
@@ -52,15 +54,27 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <!-- Android App Links: shared product (/p/<slug>/) and invite (/r/<code>/) links open the app.
+                 Verified by https://shop.gmmdistributors.xyz/.well-known/assetlinks.json -->
             <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="https" android:host="gmmdistributors.xyz" />
+                <data android:scheme="https" android:host="shop.gmmdistributors.xyz" android:pathPrefix="/p/" />
+                <data android:scheme="https" android:host="shop.gmmdistributors.xyz" android:pathPrefix="/r/" />
             </intent-filter>
         </activity>
 
-        <!-- Share Thought Cards and Invoice Receipts to WhatsApp / Social Media -->
+        <!-- Push notifications (Firebase): campaigns from the admin + instant order updates -->
+        <service
+            android:name=".PushService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
+
+        <!-- Share invoice PDFs to WhatsApp / other apps -->
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"

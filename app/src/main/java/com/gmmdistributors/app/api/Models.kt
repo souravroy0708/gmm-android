@@ -233,6 +233,10 @@ data class Product(
     val descriptionBn: String,
     val composition: String,
     val compositionBn: String,
+    /** Ayush medicines: licence number from the label, and a safety caution shown in a box. */
+    val licenseNo: String = "",
+    val caution: String = "",
+    val cautionBn: String = "",
     val benefits: List<String>,
     val benefitsBn: List<String>,
     val drawableName: String,
@@ -247,6 +251,9 @@ data class Product(
     fun localizedDesc(lang: String): String = if (lang == "bn" && descriptionBn.isNotBlank()) descriptionBn else description
     fun localizedComp(lang: String): String = if (lang == "bn" && compositionBn.isNotBlank()) compositionBn else composition
     fun localizedBenefits(lang: String): List<String> = if (lang == "bn" && benefitsBn.isNotEmpty()) benefitsBn else benefits
+    fun localizedCaution(lang: String): String = if (lang == "bn" && cautionBn.isNotBlank()) cautionBn else caution
+    val isMedicine: Boolean get() = kind == "ayush"
+
     val defaultVariant: ProductVariant? get() = variants.firstOrNull { it.inStock } ?: variants.firstOrNull()
 
     fun toJson(): JSONObject = JSONObject()
@@ -262,6 +269,9 @@ data class Product(
         .put("description_bn", descriptionBn)
         .put("composition", composition)
         .put("composition_bn", compositionBn)
+        .put("license_no", licenseNo)
+        .put("caution", caution)
+        .put("caution_bn", cautionBn)
         .put("benefits", JSONArray(benefits))
         .put("benefits_bn", JSONArray(benefitsBn))
         .put("drawable_name", drawableName)
@@ -287,6 +297,9 @@ data class Product(
                 description = j.optString("description"),
                 descriptionBn = j.optString("description_bn"),
                 composition = j.optString("composition"),
+                licenseNo = j.optString("license_no"),
+                caution = j.optString("caution"),
+                cautionBn = j.optString("caution_bn"),
                 compositionBn = j.optString("composition_bn"),
                 benefits = bEn,
                 benefitsBn = bBn,
@@ -557,14 +570,15 @@ data class Order(
 }
 
 /** The account on this phone. isGuest = created silently so people can order without signing in. */
-data class Me(val id: Long, val name: String, val phone: String, val email: String, val language: String, val isGuest: Boolean = false) {
+data class Me(val id: Long, val name: String, val phone: String, val email: String, val language: String,
+              val isGuest: Boolean = false, val referralCode: String = "") {
     fun toJson(): JSONObject = JSONObject().put("id", id).put("name", name).put("phone", phone).put("email", email)
-        .put("language", language).put("is_guest", isGuest)
+        .put("language", language).put("is_guest", isGuest).put("referral_code", referralCode)
 
     companion object {
         fun from(j: JSONObject?): Me? = j?.let {
             Me(it.optLong("id"), it.optString("name"), it.optString("phone"), it.optString("email"),
-                it.optString("language", "bn"), it.optBoolean("is_guest", false))
+                it.optString("language", "bn"), it.optBoolean("is_guest", false), it.optString("referral_code"))
         }
     }
 }
@@ -597,12 +611,13 @@ data class PendingOrder(
     val note: String = "",
     val status: String = "waiting",  // waiting | failed
     val error: String = "",
+    val referralCode: String = "",
 ) {
     val itemsCount: Int get() = lines.sumOf { it.quantity }
 
     fun toJson(): JSONObject = JSONObject().put("key", key).put("created_at", createdAt).put("payment_method", paymentMethod)
         .put("address", address.toJson()).put("lines", JSONArray(lines.map { it.toJson() })).put("expected_total", expectedTotal)
-        .put("note", note).put("status", status).put("error", error)
+        .put("note", note).put("status", status).put("error", error).put("referral_code", referralCode)
 
     /** Body for /api/v1/orders/place/ */
     fun placeBody(): JSONObject {
@@ -611,6 +626,7 @@ data class PendingOrder(
         val addr = address.toJson().apply { remove("id"); remove("is_default") }
         return JSONObject().put("address", addr).put("items", items).put("payment_method", paymentMethod)
             .put("note", note).put("idempotency_key", key).put("expected_total", expectedTotal).put("offline", true)
+            .put("referral_code", referralCode)
     }
 
     companion object {
@@ -619,7 +635,7 @@ data class PendingOrder(
             address = Address.from(j.optJSONObject("address") ?: JSONObject()),
             lines = j.optJSONArray("lines").mapObjects { PendingLine.from(it) },
             expectedTotal = j.optDouble("expected_total", 0.0), note = j.optString("note"),
-            status = j.optString("status", "waiting"), error = j.optString("error"),
+            status = j.optString("status", "waiting"), error = j.optString("error"), referralCode = j.optString("referral_code"),
         )
     }
 }
@@ -792,5 +808,16 @@ data class PendingFeedback(
         fun from(j: JSONObject) = PendingFeedback(j.optString("key"), j.optLong("created_at"), j.optString("kind", "other"),
             j.optString("message"), j.optString("name"), j.optString("phone"), j.optString("order_no"), j.optString("screen"),
             j.optString("image_path"))
+    }
+}
+
+
+/** Krishi Mitra: my invite code and the orders placed with it. */
+data class ReferralStats(val code: String, val orders: Int, val delivered: Int, val link: String, val recent: List<Triple<String, String, String>>) {
+    companion object {
+        fun from(j: JSONObject) = ReferralStats(
+            j.optString("code"), j.optInt("orders"), j.optInt("delivered"), j.optString("link"),
+            j.optJSONArray("recent").mapObjects { Triple(it.optString("name"), it.optString("village"), it.optString("status_label")) },
+        )
     }
 }

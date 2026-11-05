@@ -40,6 +40,7 @@ val WarnInk = Color(0xFF6B4423)
 val KindFert = Color(0xFF1F6B3A)
 val KindPest = Color(0xFFB7791F)
 val KindFood = Color(0xFFB4532A)
+val KindAyush = Color(0xFF0F766E)  // tulsi teal: Ayush medicine
 
 /** Dark mode state, set by GmmTheme so all surface tokens adapt automatically (Bas1Minute pattern). */
 object ThemeState { var dark by mutableStateOf(false) }

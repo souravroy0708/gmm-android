@@ -264,6 +264,10 @@ fun ProfileTab(app: AppController, actions: PhoneActions) {
             )
         }
 
+        KrishiMitraCard(app, actions)
+
+        NotificationSettingsCard(app)
+
         ReportEntryCard(lang = lang, pending = app.pendingReports) { actions.onReportProblem("profile", "") }
 
         DeveloperCreditCard(lang = lang, onEmail = { actions.onEmail(DEVELOPER_EMAIL, "GMM Organic app v${com.gmmdistributors.app.BuildConfig.VERSION_NAME}") })

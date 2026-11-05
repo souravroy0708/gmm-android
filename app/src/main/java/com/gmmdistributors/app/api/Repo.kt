@@ -90,7 +90,21 @@ class Repo(context: Context) {
         secrets.secret = secret
         val me = Me.from(j.optJSONObject("me"))
         withContext(Dispatchers.IO) { me?.let { db.putCache("me", it.toJson().toString()) } }
+        // A new sign-in (guest or member) is a new server session: attach this phone's push token to it.
+        val prefs = com.gmmdistributors.app.Prefs(ctx)
+        if (prefs.pushToken.isNotBlank()) runCatching { registerPush(prefs.pushToken, prefs.promoPush) }
         return me
+    }
+
+    /** Tell GMM this phone's Firebase token and whether offers are allowed. Needs a (guest) session. */
+    suspend fun registerPush(token: String, promo: Boolean) {
+        if (token.isBlank() && !signedIn) return
+        if (!signedIn && ensureSession(com.gmmdistributors.app.Prefs(ctx).language) !is Res.Ok) return
+        api.post("me/push-token/", JSONObject().put("token", token).put("promo", promo))
+    }
+
+    suspend fun reportPushOpened(campaignId: String) {
+        campaignId.toIntOrNull()?.let { api.post("push/opened/", JSONObject().put("id", it)) }
     }
 
     /** Makes sure this phone has a (guest) session so it can order without a sign-in screen. */
@@ -245,6 +259,7 @@ class Repo(context: Context) {
         idempotencyKey: String,
         expectedTotal: Double,
         lang: String,
+        referralCode: String = "",
     ): Res<Order> {
         val itemsArr = JSONArray()
         cartLines.forEach { line -> itemsArr.put(JSONObject().put("variant_id", line.variant.id).put("quantity", line.quantity)) }
@@ -254,6 +269,7 @@ class Repo(context: Context) {
             .put("note", note)
             .put("idempotency_key", idempotencyKey)
             .put("expected_total", expectedTotal)
+            .put("referral_code", referralCode)
         if (address.id > 0L) body.put("address_id", address.id)
         else body.put("address", address.toJson().apply { remove("id"); remove("is_default") })
         val res = orderCall("orders/place/", body, lang, "Could not place the order. Please try again.")
@@ -332,6 +348,15 @@ class Repo(context: Context) {
             }
         }
         return fail(r, lang, "Invoice not available yet.")
+    }
+
+    // ---------- Krishi Mitra ----------
+
+    suspend fun loadReferrals(lang: String): Res<ReferralStats> {
+        if (ensureSession(lang) !is Res.Ok) return Res.Fail("offline", offline = true)
+        val r = api.post("me/referrals/")
+        if (r.ok && r.json != null) return Res.Ok(ReferralStats.from(r.json))
+        return fail(r, lang, "Could not load your invites.")
     }
 
     // ---------- problem reports (offline queue) ----------
