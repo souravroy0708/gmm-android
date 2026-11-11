@@ -1,5 +1,7 @@
 # GMM Organic — Native Android App (`gmm-android`)
 
+
+
 Kotlin + Jetpack Compose app for **GMM Distributors Private Limited** (Arambagh, Hooghly, West Bengal).
 Same architecture as `bas1minute-android` (single Activity, `AppController` state holder, `Repo` + SQLite cache,
 HMAC-signed API calls). Everything the customer buys comes **live from the GMM Django backend** (`gmm`):
